@@ -20,12 +20,14 @@ export function setTokens(access: string, refresh: string) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(ACCESS_KEY, access);
   localStorage.setItem(REFRESH_KEY, refresh);
+  api.defaults.headers.common.Authorization = `Bearer ${access}`;
 }
 
 export function clearTokens() {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(ACCESS_KEY);
   localStorage.removeItem(REFRESH_KEY);
+  delete api.defaults.headers.common.Authorization;
 }
 
 export function normalizeList<T>(data: T[] | { results: T[] }): T[] {
@@ -75,8 +77,16 @@ api.interceptors.response.use(
     };
 
     const status = error.response?.status;
+    const url = originalRequest?.url ?? '';
 
-    if (!originalRequest || status !== 401 || originalRequest._retry) {
+    const isExcluded =
+      url.includes('/auth/login/') ||
+      url.includes('/auth/register/') ||
+      url.includes('/auth/social/google/') ||
+      url.includes('/auth/token/refresh/') ||
+      url.includes('/auth/logout/');
+
+    if (!originalRequest || status !== 401 || originalRequest._retry || isExcluded) {
       return Promise.reject(error);
     }
 
@@ -116,6 +126,8 @@ api.interceptors.response.use(
       if (typeof window !== 'undefined') {
         localStorage.setItem(ACCESS_KEY, newAccess);
       }
+
+      api.defaults.headers.common.Authorization = `Bearer ${newAccess}`;
 
       processQueue(null, newAccess);
 

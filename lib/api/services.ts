@@ -1,4 +1,4 @@
-import { api, clearTokens, getRefreshToken, normalizeList, setTokens } from './client';
+import { api, clearTokens, getRefreshToken, getAccessToken, normalizeList, setTokens } from './client';
 import type {
   Address,
   AddressPayload,
@@ -49,13 +49,31 @@ export const authApi = {
     return data;
   },
 
+  googleLogin: async (access_token: string) => {
+    const { data } = await api.post<AuthResponse>(
+      '/auth/social/google/',
+      { access_token }
+    );
+
+    setTokens(data.tokens.access, data.tokens.refresh);
+
+    return data;
+  },
+
   me: async () => {
+    const token = getAccessToken();
+
+    if (!token) {
+      throw new Error('No access token found');
+    }
+
     const { data } = await api.get<User>('/auth/me/');
     return data;
   },
 
   logout: async () => {
     const refresh = getRefreshToken();
+
     try {
       if (refresh) {
         await api.post('/auth/logout/', { refresh });
@@ -63,12 +81,6 @@ export const authApi = {
     } finally {
       clearTokens();
     }
-  },
-
-  googleLogin: async (access_token: string) => {
-    const { data } = await api.post<AuthResponse>('/auth/social/google/', { access_token });
-    setTokens(data.tokens.access, data.tokens.refresh);
-    return data;
   },
 };
 

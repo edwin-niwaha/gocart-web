@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api/services';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -34,14 +34,18 @@ export default function GoogleCallbackPage() {
           return;
         }
 
-        const response = await authApi.googleLogin(accessToken);
+        setMessage('Signing you in...');
 
-        setUser(response.user);
+        await authApi.googleLogin(accessToken);
 
-        // Clean URL hash
+        const user = await authApi.me();
+        setUser(user);
+
         window.history.replaceState(null, '', window.location.pathname);
 
-        if (response.user.user_type === 'ADMIN') {
+        setMessage('Login successful. Redirecting...');
+
+        if (user.user_type === 'ADMIN') {
           router.replace('/dashboard');
         } else {
           router.replace('/account/orders');
@@ -49,7 +53,8 @@ export default function GoogleCallbackPage() {
       } catch (err: any) {
         setMessage(
           err?.response?.data?.detail ||
-          'Unable to complete Google authentication.'
+            err?.message ||
+            'Unable to complete Google authentication.'
         );
       }
     }
