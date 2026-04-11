@@ -2,9 +2,11 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 const ACCESS_KEY = 'gocart_access';
 const REFRESH_KEY = 'gocart_refresh';
+const TENANT_KEY = 'gocart_tenant_slug';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? '';
 const API_PREFIX = '/api/v1';
 const API_ROOT = `${API_BASE_URL}${API_PREFIX}`;
+const REQUEST_TIMEOUT = Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS ?? 15000);
 
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -14,6 +16,16 @@ export function getAccessToken(): string | null {
 export function getRefreshToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(REFRESH_KEY);
+}
+
+export function getTenantSlug(): string | null {
+  if (typeof window === 'undefined') return process.env.NEXT_PUBLIC_TENANT_SLUG ?? null;
+  return localStorage.getItem(TENANT_KEY) || process.env.NEXT_PUBLIC_TENANT_SLUG || null;
+}
+
+export function setTenantSlug(slug: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(TENANT_KEY, slug);
 }
 
 export function setTokens(access: string, refresh: string) {
@@ -36,6 +48,7 @@ export function normalizeList<T>(data: T[] | { results: T[] }): T[] {
 
 export const api = axios.create({
   baseURL: API_ROOT,
+  timeout: REQUEST_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -43,31 +56,21 @@ export const api = axios.create({
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getAccessToken();
+  const tenantSlug = getTenantSlug();
+
+  config.headers = config.headers ?? {};
 
   if (token) {
-    config.headers = config.headers ?? {};
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  if (tenantSlug) {
+    config.headers['X-Tenant-Slug'] = tenantSlug;
   }
 
   return config;
 });
 
-let isRefreshing = false;
-let queue: Array<{
-  resolve: (token: string) => void;
-  reject: (error: unknown) => void;
-}> = [];
-
-function processQueue(error: unknown, token: string | null = null) {
-  queue.forEach((promise) => {
-    if (error) {
-      promise.reject(error);
-    } else if (token) {
-      promise.resolve(token);
-    }
-  });
-  queue = [];
-}
+let refreshPromise: Promise<string> | null = null;
 
 api.interceptors.response.use(
   (response) => response,
@@ -96,51 +99,30 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (isRefreshing) {
-      return new Promise((resolve, reject) => {
-        queue.push({
-          resolve: (token: string) => {
-            originalRequest.headers = originalRequest.headers ?? {};
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            resolve(api(originalRequest));
-          },
-          reject,
-        });
-      });
-    }
-
     originalRequest._retry = true;
-    isRefreshing = true;
 
     try {
-      const refreshResponse = await axios.post(
-        `${API_ROOT}/auth/token/refresh/`,
-        { refresh },
-        {
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
+      refreshPromise ??= axios
+        .post(`${API_ROOT}/auth/token/refresh/`, { refresh }, { headers: { 'Content-Type': 'application/json' }, timeout: REQUEST_TIMEOUT })
+        .then((res) => {
+          const newAccess = res.data.access as string;
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(ACCESS_KEY, newAccess);
+          }
+          api.defaults.headers.common.Authorization = `Bearer ${newAccess}`;
+          return newAccess;
+        })
+        .finally(() => {
+          refreshPromise = null;
+        });
 
-      const newAccess = refreshResponse.data.access as string;
-
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(ACCESS_KEY, newAccess);
-      }
-
-      api.defaults.headers.common.Authorization = `Bearer ${newAccess}`;
-
-      processQueue(null, newAccess);
-
+      const newAccess = await refreshPromise;
       originalRequest.headers = originalRequest.headers ?? {};
       originalRequest.headers.Authorization = `Bearer ${newAccess}`;
-
       return api(originalRequest);
     } catch (refreshError) {
-      processQueue(refreshError, null);
       clearTokens();
       return Promise.reject(refreshError);
-    } finally {
-      isRefreshing = false;
     }
   }
 );

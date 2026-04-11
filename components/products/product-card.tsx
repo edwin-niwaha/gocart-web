@@ -1,35 +1,219 @@
 'use client';
 
 import Link from 'next/link';
-import { Heart, ShoppingCart } from 'lucide-react';
+import { Heart, ShoppingCart, Star, Eye } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import type { Product } from '@/lib/types';
 import { formatCurrency, getImage } from '@/lib/utils';
 import { cartApi, wishlistApi } from '@/lib/api/services';
+import { showError, showInfo, showSuccess } from '@/lib/toast';
+
+function renderStars(rating: number) {
+  return (
+    <div className="flex items-center gap-1">
+      {[...Array(5)].map((_, i) => (
+        <Star
+          key={i}
+          size={14}
+          className={
+            i < Math.round(rating)
+              ? 'fill-yellow-400 text-yellow-400'
+              : 'text-slate-300'
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function getErrorMessage(error: any, fallback: string) {
+  const data = error?.response?.data;
+
+  if (typeof data === 'string') return data;
+  if (data?.detail) return String(data.detail);
+  if (data?.message) return String(data.message);
+
+  if (typeof data === 'object' && data !== null) {
+    const firstValue = Object.values(data)[0];
+    if (Array.isArray(firstValue) && firstValue.length > 0) {
+      return String(firstValue[0]);
+    }
+    if (typeof firstValue === 'string') {
+      return firstValue;
+    }
+  }
+
+  return fallback;
+}
 
 export function ProductCard({ product }: { product: Product }) {
+  const safePrice = Number(product?.base_price ?? product?.price ?? 0);
+  const rating = Number(product?.average_rating ?? 0);
+  const reviews = Number(product?.total_reviews ?? 0);
+
+  const [addingCart, setAddingCart] = useState(false);
+  const [addingWishlist, setAddingWishlist] = useState(false);
+  const [isWishlisted, setIsWishlisted] = useState(false);
+
+  const firstAvailableVariant = useMemo(
+    () =>
+      product?.variants?.find(
+        (variant) => variant.is_active && Number(variant.stock_quantity) > 0
+      ),
+    [product]
+  );
+
   async function handleAddToCart() {
-    try { await cartApi.addItem({ product_id: product.id, quantity: 1 }); } catch {}
+    try {
+      if (!firstAvailableVariant) {
+        showError('This product is currently unavailable.');
+        return;
+      }
+
+      setAddingCart(true);
+
+      await cartApi.addItem({
+        variant_id: firstAvailableVariant.id,
+        quantity: 1,
+      });
+
+      showSuccess('Added to cart');
+    } catch (error: any) {
+      showError(getErrorMessage(error, 'Failed to add item to cart.'));
+    } finally {
+      setAddingCart(false);
+    }
   }
-  async function handleAddToWishlist() {
-    try { await wishlistApi.addItem({ product_id: product.id }); } catch {}
+
+  async function handleToggleWishlist() {
+    try {
+      setAddingWishlist(true);
+
+      if (isWishlisted) {
+        showInfo('Already in wishlist');
+        return;
+      }
+
+      await wishlistApi.addItem({
+        product_id: product.id,
+      });
+
+      setIsWishlisted(true);
+      showSuccess('Added to wishlist');
+    } catch (error: any) {
+      showError(getErrorMessage(error, 'Failed to update wishlist.'));
+    } finally {
+      setAddingWishlist(false);
+    }
   }
 
   return (
-    <div className="card space-y-3 overflow-hidden">
-      <img src={getImage(product.hero_image, product.image_urls)} alt={product.title} className="h-56 w-full rounded-2xl object-cover" />
-      <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand-green)]">{product.category?.name}</p>
-        <h3 className="text-lg font-bold">{product.title}</h3>
-        <p className="line-clamp-2 text-sm subtle">{product.description}</p>
+    <div className="group flex h-full w-full flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+      <div className="relative overflow-hidden">
+        <Link href={`/products/${product.slug}`} className="block">
+          <div className="relative">
+            <img
+              src={getImage(product.hero_image, product.image_urls)}
+              alt={product.title}
+              className="h-60 w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            />
+
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/20 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+          </div>
+        </Link>
+
+        <div className="absolute left-4 top-4">
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold shadow-sm backdrop-blur ${
+              product.is_in_stock
+                ? 'bg-white/90 text-emerald-700'
+                : 'bg-white/90 text-slate-500'
+            }`}
+          >
+            {product.is_in_stock ? 'In stock' : 'Out of stock'}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleToggleWishlist}
+          disabled={addingWishlist}
+          className={`absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-full border shadow-sm backdrop-blur transition-all duration-300 ${
+            isWishlisted
+              ? 'border-rose-200 bg-rose-50 text-rose-600'
+              : 'border-white/70 bg-white/90 text-slate-700 hover:bg-white'
+          }`}
+          aria-label="Add to wishlist"
+        >
+          <Heart size={18} className={isWishlisted ? 'fill-current' : ''} />
+        </button>
+
+        <div className="absolute inset-x-4 bottom-4 translate-y-4 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleAddToCart}
+              disabled={!product.is_in_stock || addingCart}
+              className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-[#127D61] px-4 text-sm font-semibold text-white shadow-lg transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ShoppingCart size={16} />
+              {addingCart ? 'Adding...' : 'Quick add'}
+            </button>
+
+            <Link
+              href={`/products/${product.slug}`}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/95 text-slate-800 shadow-lg transition hover:bg-white"
+              aria-label="View product"
+            >
+              <Eye size={17} />
+            </Link>
+          </div>
+        </div>
       </div>
-      <div className="flex items-center justify-between">
-        <span className="text-lg font-extrabold">{formatCurrency(product.price)}</span>
-        <span className={`badge ${product.is_in_stock ? '' : 'opacity-70'}`}>{product.is_in_stock ? 'In stock' : 'Out of stock'}</span>
-      </div>
-      <div className="flex gap-2">
-        <button onClick={handleAddToCart} className="btn flex-1"><ShoppingCart size={16} /> Add</button>
-        <button onClick={handleAddToWishlist} className="btn btn-secondary"><Heart size={16} /></button>
-        <Link href={`/products/${product.slug}`} className="btn btn-accent">Details</Link>
+
+      <div className="flex flex-1 flex-col p-5">
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--brand-green)]">
+            {product.category?.name ?? 'Product'}
+          </p>
+
+          <Link href={`/products/${product.slug}`} className="block">
+            <h3 className="line-clamp-2 min-h-[3.5rem] text-lg font-bold leading-snug text-slate-900 transition-colors duration-200 group-hover:text-[var(--brand-green)]">
+              {product.title}
+            </h3>
+          </Link>
+
+          <div className="flex h-6 items-center justify-between gap-3">
+            {reviews > 0 ? (
+              <div className="flex items-center gap-2">
+                {renderStars(rating)}
+                <span className="text-sm text-slate-500">
+                  {rating.toFixed(1)} ({reviews})
+                </span>
+              </div>
+            ) : (
+              <span className="text-sm text-slate-400">No reviews</span>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-auto pt-5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xl font-extrabold text-slate-900">
+              {formatCurrency(safePrice)}
+            </span>
+
+            <button
+              type="button"
+              onClick={handleAddToCart}
+              disabled={!product.is_in_stock || addingCart}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-800 transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--brand-green)] hover:text-[var(--brand-green)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ShoppingCart size={16} />
+              {addingCart ? 'Adding...' : 'Add'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -17,4 +17,5 @@
 cp .env.example .env.local
 npm install
 npm run dev
+npm run build
 ```

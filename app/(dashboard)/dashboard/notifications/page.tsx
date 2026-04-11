@@ -12,9 +12,23 @@ const config = {
   create: adminApi.createNotification,
   update: adminApi.updateNotification,
   remove: adminApi.removeNotification,
-  actions: [{ label: 'Mark read', tone: 'primary', onClick: (item) => adminApi.markNotificationRead(item.id) }],
+  actions: [
+    {
+      label: 'Mark read',
+      tone: 'primary',
+      onClick: async (item: any) => {
+        await adminApi.markNotificationRead(item.id);
+      },
+    },
+  ],
   readOnly: false,
-  fields: [{ name: 'notification_type', label: 'Notification type', type: 'text' }, { name: 'title', label: 'Title', type: 'text' }, { name: 'message', label: 'Message', type: 'textarea' }, { name: 'data', label: 'Data JSON', type: 'json' }, { name: 'is_read', label: 'Is Read', type: 'checkbox' }],
+  fields: [
+    { name: 'notification_type', label: 'Notification type', type: 'text' },
+    { name: 'title', label: 'Title', type: 'text' },
+    { name: 'message', label: 'Message', type: 'textarea' },
+    { name: 'data', label: 'Data JSON', type: 'text' },
+    { name: 'is_read', label: 'Is Read', type: 'boolean' },
+  ],
 };
 
 export default function Page() {

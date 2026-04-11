@@ -2,65 +2,47 @@ import './globals.css';
 import { Providers } from '@/components/ui/providers';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
+import { Analytics } from '@/components/analytics/analytics';
+import { Toaster } from 'sonner'; // ✅ add this
 
 export const metadata = {
-  title: 'GoCart Web',
-  description: 'GoCart storefront and dashboard'
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
+  title: {
+    default: 'GoCart',
+    template: '%s | GoCart',
+  },
+  description: 'Tenant-aware GoCart storefront and admin dashboard.',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#127D61',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body>
         <Providers>
+          <Analytics />
           <Header />
-          <main className="container-page">{children}
-          <Footer /></main>
+          <main className="container-page min-h-screen">{children}</main>
+          <Footer />
+
+          {/* ✅ Toast mounted globally */}
+          <Toaster
+            position="top-right"
+            richColors
+            closeButton
+            duration={3000}
+          />
         </Providers>
       </body>
     </html>
   );
 }
-
-
-export type AuthTokens = {
-  refresh: string;
-  access: string;
-};
-
-export type BackendUser = {
-  id: number;
-  email: string;
-  username: string;
-  first_name: string;
-  last_name: string;
-  profile_picture_url: string | null;
-  user_type: string;
-  is_active: boolean;
-  created_at: string;
-};
-
-export type AuthResponse = {
-  user: BackendUser;
-  tokens: AuthTokens;
-};
-
-export type LoginPayload = {
-  email: string;
-  password: string;
-};
-
-export type RegisterPayload = {
-  email: string;
-  username: string;
-  password: string;
-  password_confirm: string;
-};
-
-export type LogoutPayload = {
-  refresh: string;
-};
-
-export type GoogleLoginPayload = {
-  access_token: string;
-};

@@ -1,3 +1,5 @@
+'use client';
+import { useTenant } from '@/app/providers/TenantProvider';
 import Link from "next/link";
 import {
   Facebook,
@@ -16,6 +18,9 @@ import {
 } from "lucide-react";
 
 export function Footer() {
+  const tenant = useTenant();
+  const appName = tenant?.branding?.app_name || "{appName}";
+  const website = tenant?.settings?.website_url;
   return (
     <footer className="mt-20 border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white">
 
@@ -148,7 +153,7 @@ export function Footer() {
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
 
           <p>
-            © {new Date().getFullYear()} <span className="font-semibold text-slate-700">Perpetual Tech</span>. All rights reserved.
+            © {new Date().getFullYear()} <span className="font-semibold text-slate-700">Perpetual Labs</span>. All rights reserved.
           </p>
 
           <div className="flex flex-wrap gap-4">
@@ -167,7 +172,7 @@ export function Footer() {
 
         </div>
       </div>
-    </footer>
+    {website ? <a href={website} className="text-sm text-slate-500 underline">Website</a> : null}</footer>
   );
 }
 

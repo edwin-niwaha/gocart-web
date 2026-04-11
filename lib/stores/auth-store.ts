@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { authApi } from '@/lib/api/services';
 import type { User } from '@/lib/types';
+import { getCurrentRole, hasTenantRole } from '@/lib/auth/roles';
 
 interface AuthState {
   user: User | null;
@@ -11,9 +12,12 @@ interface AuthState {
   setUser: (user: User | null) => void;
   hydrate: () => Promise<void>;
   logout: () => Promise<void>;
+  currentRole: () => string | null;
+  canAccessDashboard: () => boolean;
+  hasRole: (role: 'staff' | 'manager' | 'tenant_admin' | 'tenant_owner' | 'super_admin') => boolean;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   hydrated: false,
   loading: false,
@@ -35,4 +39,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user: null, loading: false, hydrated: true });
     }
   },
+  currentRole: () => getCurrentRole(get().user),
+  canAccessDashboard: () => hasTenantRole(get().user, 'staff'),
+  hasRole: (role) => hasTenantRole(get().user, role),
 }));

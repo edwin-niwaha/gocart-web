@@ -1,13 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { addressApi, cartApi, orderApi, paymentApi, shippingApi } from '@/lib/api/services';
+import { addressApi, cartApi, orderApi, shippingApi } from '@/lib/api/services';
 import type { Address, CartItem, ShippingMethod } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
-
-function slugify(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40);
-}
 
 export function CheckoutPanel() {
   const [items, setItems] = useState<CartItem[]>([]);
@@ -26,8 +22,9 @@ export function CheckoutPanel() {
       if (fallback) setSelectedAddress(fallback.id);
     }).catch(() => setAddresses([]));
     shippingApi.methods().then((data) => {
-      setMethods(data.filter((item) => item.is_active));
-      if (data[0]) setSelectedMethod(data[0].id);
+      const active = data.filter((item) => item.is_active);
+      setMethods(active);
+      if (active[0]) setSelectedMethod(active[0].id);
     }).catch(() => setMethods([]));
   }, []);
 
@@ -35,19 +32,17 @@ export function CheckoutPanel() {
 
   async function placeOrder() {
     if (!items.length) return setMessage('Add products to cart first.');
+    if (!selectedAddress) return setMessage('Select a delivery address first.');
     setPlacing(true);
     setMessage('');
     try {
-      const slug = `order-${Date.now()}`;
-      const order = await orderApi.create({ slug: slugify(slug), description: `Online order with ${items.length} item(s)` });
-      for (const item of items) {
-        await orderApi.addItem({ order: order.id, product: item.product.id, quantity: item.quantity });
-      }
-      if (selectedAddress && selectedMethod) {
-        await shippingApi.createShipment({ order: order.id, address: Number(selectedAddress), shipping_method: Number(selectedMethod) });
-      }
-      await paymentApi.create({ order: order.id, provider: 'MANUAL', currency: 'UGX', amount: total });
+      const order = await orderApi.checkout({
+        address_id: Number(selectedAddress),
+        shipping_method_id: selectedMethod ? Number(selectedMethod) : undefined,
+        payment_method: 'MANUAL',
+      });
       setMessage(`Order ${order.slug} created successfully.`);
+      setItems([]);
     } catch {
       setMessage('We could not complete checkout. Confirm you are logged in and have a valid address.');
     } finally {
@@ -88,7 +83,7 @@ export function CheckoutPanel() {
         <span className="text-2xl font-black">{formatCurrency(total)}</span>
       </div>
       {message ? <p className="text-sm font-medium text-[var(--brand-green)]">{message}</p> : null}
-      <button onClick={placeOrder} disabled={placing} className="btn btn-accent w-full">{placing ? 'Processing…' : 'Create order, shipment and payment'}</button>
+      <button onClick={placeOrder} disabled={placing} className="btn btn-accent w-full">{placing ? 'Processing…' : 'Checkout now'}</button>
     </div>
   );
 }

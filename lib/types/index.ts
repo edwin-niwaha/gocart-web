@@ -1,6 +1,22 @@
 export type Tokens = { access: string; refresh: string };
 export type UserType = 'USER' | 'ADMIN';
 
+export type TenantMembershipRole =
+  | 'super_admin'
+  | 'tenant_owner'
+  | 'tenant_admin'
+  | 'manager'
+  | 'staff';
+
+export type TenantMembership = {
+  id: number;
+  tenant: number;
+  tenant_name?: string;
+  tenant_slug?: string;
+  role: TenantMembershipRole;
+  is_active: boolean;
+};
+
 export type User = {
   id: number;
   email: string;
@@ -11,35 +27,56 @@ export type User = {
   user_type: UserType;
   is_active: boolean;
   created_at: string;
+  memberships?: TenantMembership[];
+  active_tenant_slug?: string | null;
 };
 
 export type AuthResponse = { user: User; tokens: Tokens };
 
 export type Category = {
   id: number;
+  tenant?: number | null;
   name: string;
   slug: string;
   image_url?: string | null;
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ProductVariant = {
+  id: number;
+  tenant?: number | null;
+  name: string;
+  sku: string;
+  price: string | number;
+  stock_quantity: number;
+  max_quantity_per_order?: number | null;
+  is_active: boolean;
+  sort_order: number;
+  is_in_stock?: boolean;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type Product = {
   id: number;
+  tenant?: number | null;
+  category?: Category | null;
   title: string;
   slug: string;
   description: string;
   hero_image?: string | null;
   image_urls: string[];
-  price: string;
-  stock_quantity: number;
-  max_quantity_per_order: number;
   is_active: boolean;
+  is_featured?: boolean;
+  base_price: string | number;
   is_in_stock: boolean;
-  category: Category;
-  created_at: string;
-  updated_at: string;
+  variants: ProductVariant[];
+  average_rating?: string | number;
+  total_reviews?: number;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type CartItem = {
@@ -81,3 +118,38 @@ export type ShippingMethod = { id: number; name: string; description: string; fe
 export type ShippingMethodPayload = { name: string; description: string; fee: string | number; estimated_days: number; is_active: boolean };
 export type Shipment = { id: number; order: number; order_slug: string; user_email: string; address: number; shipping_method: number; shipping_method_name: string; status: string; tracking_number?: string | null; shipping_fee: string; dispatched_at?: string | null; delivered_at?: string | null; created_at: string; updated_at: string };
 export type ShipmentPayload = { order: number; address: number; shipping_method: number };
+
+export type SupportMessage = {
+  id: number;
+  name: string;
+  email: string;
+  message: string;
+  status: 'NEW' | 'IN_PROGRESS' | 'RESOLVED';
+  created_at: string;
+  updated_at: string;
+};
+
+export type TenantBranding = {
+  app_name?: string;
+  hero_title?: string;
+  hero_subtitle?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  accent_color?: string;
+  logo?: string | null;
+};
+
+export type TenantSettings = {
+  support_chat_url?: string;
+  website_url?: string;
+  terms_url?: string;
+  privacy_url?: string;
+  maintenance_mode?: boolean;
+};
+
+export type TenantFeatureFlag = {
+  id: number;
+  key: string;
+  enabled: boolean;
+  description?: string;
+};

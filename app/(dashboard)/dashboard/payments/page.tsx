@@ -11,10 +11,34 @@ const config = {
   list: adminApi.payments,
   create: adminApi.createPayment,
   update: adminApi.updatePayment,
-
-  actions: [{ label: 'Mark paid', tone: 'primary', onClick: (item) => adminApi.markPaymentPaid(item.id, { transaction_id: 'manual-admin-approval', provider_response: { source: 'web-admin' } }) }, { label: 'Mark failed', tone: 'danger', onClick: (item) => adminApi.markPaymentFailed(item.id, { provider_response: { source: 'web-admin' } }) }],
+  actions: [
+    {
+      label: 'Mark paid',
+      tone: 'primary',
+      onClick: async (item: any) => {
+        await adminApi.markPaymentPaid(item.id, {
+          transaction_id: 'manual-admin-approval',
+          provider_response: { source: 'web-admin' },
+        });
+      },
+    },
+    {
+      label: 'Mark failed',
+      tone: 'danger',
+      onClick: async (item: any) => {
+        await adminApi.markPaymentFailed(item.id, {
+          provider_response: { source: 'web-admin' },
+        });
+      },
+    },
+  ],
   readOnly: false,
-  fields: [{ name: 'order', label: 'Order ID', type: 'number' }, { name: 'provider', label: 'Provider', type: 'text' }, { name: 'currency', label: 'Currency', type: 'text' }, { name: 'amount', label: 'Amount', type: 'number' }],
+  fields: [
+    { name: 'order', label: 'Order ID', type: 'number' },
+    { name: 'provider', label: 'Provider', type: 'text' },
+    { name: 'currency', label: 'Currency', type: 'text' },
+    { name: 'amount', label: 'Amount', type: 'number' },
+  ],
 };
 
 export default function Page() {

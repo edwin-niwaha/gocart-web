@@ -2,39 +2,35 @@ export type ResourceFieldType =
   | 'text'
   | 'textarea'
   | 'number'
-  | 'checkbox'
-  | 'json'
-  | 'date'
   | 'select'
-  | 'image';
+  | 'boolean'
+  | 'date'
+  | 'image'
+  | 'email'
+  | 'password'
+  | 'readonly';
 
 export type SelectOption = {
   label: string;
   value: string | number;
 };
 
-export type ResourceField = {
+export interface ResourceField {
   name: string;
   label: string;
-  type: ResourceFieldType;
+  type: ResourceFieldType | string;
+  required?: boolean;
   placeholder?: string;
   helpText?: string;
-  readOnly?: boolean;
-  required?: boolean;
-
-  // for select fields
   options?: SelectOption[];
-
-  // for slug auto-generation
   autoSlugFrom?: string;
-
-  // preview helpers
   preview?: boolean;
-};
+  readOnly?: boolean;
+}
 
 export type ResourceAction<T> = {
   label: string;
-  tone?: 'primary' | 'secondary' | 'danger';
+  tone?: 'primary' | 'secondary' | 'danger' | string;
   onClick: (item: T) => Promise<void> | void;
 };
 
@@ -44,13 +40,12 @@ export type AdminResourceConfig<T extends Record<string, any>> = {
   idKey?: keyof T | string;
   description?: string;
   list: () => Promise<T[]>;
-  create?: (payload: Record<string, any>) => Promise<any>;
-  update?: (id: string | number, payload: Record<string, any>) => Promise<any>;
-  remove?: (id: string | number) => Promise<any>;
+  create?: (payload: any) => Promise<any>;
+  update?: (id: any, payload: any) => Promise<any>;
+  remove?: (id: any) => Promise<any>;
   actions?: ResourceAction<T>[];
   readOnly?: boolean;
   fields: ResourceField[];
-
   searchable?: boolean;
   pageSize?: number;
 };
