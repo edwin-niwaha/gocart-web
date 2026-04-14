@@ -152,6 +152,12 @@ export const catalogApi = {
   }) => (await api.post<Review>('/reviews/', payload)).data,
 };
 
+export const commonApi = {
+  subscribeToNewsletter(payload: { email: string }) {
+    return api.post('/newsletter/', payload);
+  },
+};
+
 export const cartApi = {
   getOrCreate: async () => (await api.post<Cart>('/carts/', {})).data,
 
@@ -327,6 +333,17 @@ export const paymentApi = {
 
   create: async (payload: PaymentPayload) =>
     (await api.post<Payment>('/payments/', payload)).data,
+
+  initiateMTN: async (payload: {
+    address_id: number;
+    phone_number: string;
+  }) => (await api.post('/payments/mtn/initiate/', payload)).data,
+
+  checkStatus: async (reference: string) =>
+    (await api.get(`/payments/status/${reference}/`)).data,
+
+  finalizeOrder: async (reference: string) =>
+    (await api.post(`/payments/finalize/${reference}/`)).data,
 };
 
 export const shippingApi = {

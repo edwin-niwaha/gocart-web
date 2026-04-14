@@ -1,116 +1,225 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   LogIn,
   LogOut,
   Menu,
   Package,
+  Search,
   ShoppingCart,
   Store,
-  User,
   X,
+  Receipt,
+  Headphones,
 } from 'lucide-react';
 
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { useTenant } from '@/app/providers/TenantProvider';
 import { getBrandPalette } from '@/lib/tenant/theme';
+import { cartApi, orderApi } from '@/lib/api/services';
 
 export function Header() {
   const pathname = usePathname();
-  const { user, hydrated, logout, canAccessDashboard, currentRole } = useAuthStore();
+  const router = useRouter();
+  const { user, hydrated, logout, canAccessDashboard } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [cartCount, setCartCount] = useState(0);
+  const [ordersCount, setOrdersCount] = useState(0);
+
   const tenant = useTenant();
   const palette = getBrandPalette(tenant?.branding);
+
   const appName = tenant?.branding?.app_name || 'GoCart';
-  const strap = tenant?.branding?.hero_subtitle || 'Shop • Sell • Deliver';
-
+  const slogan = 'Shop • Sell • Deliver';
   const dashboardAllowed = canAccessDashboard();
-  const role = currentRole();
 
-  const links = [
-    { href: '/', label: 'Home', icon: Store, show: true },
-    { href: '/products', label: 'Shop', icon: Package, show: true },
-    { href: '/cart', label: 'Cart', icon: ShoppingCart, show: true },
-    { href: '/support', label: 'Support', icon: Package, show: true },
-    { href: '/account/orders', label: 'Orders', icon: Package, show: Boolean(user) },
-    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, show: dashboardAllowed },
-  ].filter((item) => item.show);
+  useEffect(() => {
+    async function loadCounts() {
+      try {
+        const items = await cartApi.listItems();
+        const count = items.reduce(
+          (sum, item) => sum + Number(item.quantity || 0),
+          0
+        );
+        setCartCount(count);
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+        const orders = await orderApi.list();
+        setOrdersCount(orders.length);
+      } catch {
+        setCartCount(0);
+        setOrdersCount(0);
+      }
+    }
+
+    loadCounts();
+  }, []);
+
+function handleSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
+  e.preventDefault();
+  const term = search.trim();
+
+  if (!term) {
+    router.push('/products');
+    return;
+  }
+
+  router.push(`/products?search=${encodeURIComponent(term)}`);
+  setMobileOpen(false);
+}
+
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
+
+  const navLinks = [
+    { href: '/', label: 'Home', icon: Store },
+    { href: '/products', label: 'Shop', icon: Package },
+    { href: '/cart', label: 'Cart', icon: ShoppingCart },
+    { href: '/support', label: 'Support', icon: Headphones },
+  ];
 
   return (
-<header className="sticky top-0 z-50 border-b border-white/20 bg-white/70 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60">
-      <div className="mx-auto max-w-7xl px-4">
-        <div className="flex items-center justify-between gap-4 py-4">
-          <Link href="/" className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-sm text-lg font-black text-white shadow-sm">G</div>
-            <div className="min-w-0">
-              <p className="truncate text-lg font-black text-slate-900">{appName}</p>
-              <p className="truncate text-xs font-medium text-[#F79420]" style={{color:palette.accent}}>{strap}</p>
-            </div>
-          </Link>
+    <header className="sticky top-0 z-50 shadow-md">
+      <div className="bg-[#131921] text-white">
+        <div className="mx-auto max-w-7xl px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href="/" className="flex items-center gap-3">
+              <div
+                className="flex h-10 w-10 items-center justify-center rounded-md font-black text-white"
+                style={{ backgroundColor: palette.primary }}
+              >
+                G
+              </div>
 
-          <nav className="hidden items-center gap-2 lg:flex">
-            {links.map((link) => {
+              <div>
+                <p className="text-lg font-black">{appName}</p>
+                <p className="text-xs text-gray-300">{slogan}</p>
+              </div>
+            </Link>
+
+            <form
+              onSubmit={handleSearchSubmit}
+              className="order-3 flex w-full flex-1 overflow-hidden rounded-md border-2 border-transparent bg-white lg:order-none lg:min-w-[320px]"
+            >
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search products"
+                className="h-10 flex-1 border-0 px-4 text-sm text-[#0F1111] outline-none"
+              />
+              <button
+                type="submit"
+                className="flex h-10 w-12 items-center justify-center bg-[#FEBD69] text-[#111111] transition hover:bg-[#f3a847]"
+              >
+                <Search size={18} />
+              </button>
+            </form>
+
+            <div className="ml-auto flex items-center gap-3">
+              <Link href="/cart" className="relative">
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white/10">
+                  <ShoppingCart size={20} />
+                </div>
+                {cartCount > 0 && (
+                  <span className="absolute -top-2 -right-2 rounded-full bg-[#f08804] px-1.5 text-xs font-bold text-black">
+                    {cartCount > 99 ? '99+' : cartCount}
+                  </span>
+                )}
+              </Link>
+
+              {user && (
+                <Link href="/account/orders" className="relative">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white/10">
+                    <Receipt size={20} />
+                  </div>
+                  {ordersCount > 0 && (
+                    <span className="absolute -top-2 -right-2 rounded-full bg-[#f08804] px-1.5 text-xs font-bold text-black">
+                      {ordersCount}
+                    </span>
+                  )}
+                </Link>
+              )}
+
+              {!hydrated ? null : user ? (
+                <button
+                  onClick={() => logout()}
+                  className="rounded-md bg-white/10 px-3 py-2 text-sm font-bold"
+                >
+                  <LogOut size={16} />
+                </button>
+              ) : (
+                <Link
+                  href="/auth/login"
+                  className="rounded-md px-4 py-2 text-sm font-bold text-white"
+                  style={{ backgroundColor: palette.primary }}
+                >
+                  <LogIn size={16} />
+                </Link>
+              )}
+
+              <button
+                onClick={() => setMobileOpen((prev) => !prev)}
+                className="rounded-md bg-white/10 p-2 lg:hidden"
+              >
+                {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 hidden lg:flex items-center gap-2">
+            {navLinks.map((link) => {
               const Icon = link.icon;
               const active = isActive(link.href);
+
               return (
-                <Link key={link.href} href={link.href} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-bold transition ${active ? 'text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100'}`}>
-                  <Icon size={17} />
-                  <span>{link.label}</span>
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition ${
+                    active
+                      ? 'bg-white text-black'
+                      : 'text-gray-200 hover:bg-white/10'
+                  }`}
+                >
+                  <Icon size={16} />
+                  {link.label}
                 </Link>
               );
             })}
-          </nav>
 
-          <div className="flex items-center gap-2">
-            {!hydrated ? null : user ? (
-              <>
-                <div className="hidden items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 md:inline-flex">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-[#127D61]"><User size={16} /></span>
-                  <div className="max-w-[180px]">
-                    <p className="truncate text-sm font-semibold text-slate-800">{user.username || user.email}</p>
-                    <p className="text-xs text-slate-500">{role || user.user_type}</p>
-                  </div>
-                </div>
-                <button type="button" onClick={() => logout()} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
-                  <LogOut size={17} />
-                  <span className="hidden md:inline">Logout</span>
-                </button>
-              </>
-            ) : (
-              <Link href="/auth/login" className="inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:opacity-90" style={{backgroundColor:palette.primary}}>
-                <LogIn size={17} />
-                <span>Login</span>
+            {dashboardAllowed && (
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold text-gray-200 hover:bg-white/10"
+              >
+                <LayoutDashboard size={16} />
+                Dashboard
               </Link>
             )}
-
-            <button type="button" onClick={() => setMobileOpen((prev) => !prev)} className="inline-flex items-center justify-center rounded-2xl border border-slate-200 p-2 text-slate-700 lg:hidden" aria-label="Toggle menu">
-              {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
           </div>
-        </div>
 
-        {mobileOpen ? (
-          <div className="border-t border-slate-200 pb-4 pt-4 lg:hidden">
-            <nav className="flex flex-col gap-2">
-              {links.map((link) => {
-                const Icon = link.icon;
-                const active = isActive(link.href);
-                return (
-                  <Link key={link.href} href={link.href} onClick={() => setMobileOpen(false)} className={`inline-flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition ${active ? 'text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100'}`}>
-                    <Icon size={18} />
-                    <span>{link.label}</span>
+          {mobileOpen && (
+            <div className="pt-3 lg:hidden">
+              <div className="flex flex-col gap-2">
+                {navLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="rounded-md p-3 hover:bg-white/10"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    {link.label}
                   </Link>
-                );
-              })}
-            </nav>
-          </div>
-        ) : null}
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

@@ -1,200 +1,247 @@
 'use client';
+
+import { FormEvent, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useTenant } from '@/app/providers/TenantProvider';
-import Link from "next/link";
+import { api } from '@/lib/api/client';
 import {
-  Facebook,
-  Twitter,
-  Instagram,
-  Linkedin,
-  Github,
+  Globe,
   Mail,
   MapPin,
   Phone,
   ShoppingCart,
   Send,
-  ShieldCheck,
-  Truck,
-  CreditCard,
-} from "lucide-react";
+  Loader2,
+  CheckCircle2,
+} from 'lucide-react';
+
+type SubscribeState = 'idle' | 'loading' | 'success' | 'error';
 
 export function Footer() {
   const tenant = useTenant();
-  const appName = tenant?.branding?.app_name || "{appName}";
+
+  const appName = tenant?.branding?.app_name || 'GoCart';
+  const slogan = tenant?.branding?.hero_subtitle || 'Shop • Sell • Deliver';
   const website = tenant?.settings?.website_url;
+
+  const [email, setEmail] = useState('');
+  const [subscribeState, setSubscribeState] = useState<SubscribeState>('idle');
+  const [message, setMessage] = useState('');
+
+  const socialLinks = useMemo(
+    () =>
+      [
+        website
+          ? { href: website, label: 'Website', icon: <Globe size={16} /> }
+          : null,
+      ].filter(Boolean) as Array<{
+        href: string;
+        label: string;
+        icon: React.ReactNode;
+      }>,
+    [website]
+  );
+
+  const handleSubscribe = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setSubscribeState('error');
+      setMessage('Enter your email address.');
+      return;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(normalizedEmail)) {
+      setSubscribeState('error');
+      setMessage('Enter a valid email address.');
+      return;
+    }
+
+    try {
+      setSubscribeState('loading');
+      setMessage('');
+
+      const response = await api.post('/newsletter/', {
+        email: normalizedEmail,
+      });
+
+      setSubscribeState('success');
+      setMessage(response.data?.detail || 'You are subscribed to updates.');
+      setEmail('');
+    } catch (error: any) {
+      console.error('Newsletter error:', error?.response?.data);
+
+      setSubscribeState('error');
+      setMessage(
+        error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          'Unable to subscribe right now. Please try again.'
+      );
+    }
+  };
+
   return (
-    <footer className="mt-20 border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white">
-
-      {/* TRUST BAR */}
-      <div className="border-b border-slate-200">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 md:grid-cols-3">
-
+    <footer className="mt-12 border-t border-slate-200 bg-white">
+      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 md:grid-cols-[1.2fr_.8fr_1fr]">
+        <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <Truck className="text-[#127D61]" />
-            <div>
-              <p className="font-bold text-slate-900">Fast delivery</p>
-              <p className="text-sm text-slate-500">Reliable shipping across Uganda</p>
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#127D61] text-base font-black text-white">
+              {appName.charAt(0).toUpperCase()}
+            </div>
+
+            <div className="min-w-0">
+              <p className="truncate text-lg font-black text-slate-900">
+                {appName}
+              </p>
+              <p className="text-xs text-slate-500">{slogan}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <ShieldCheck className="text-[#127D61]" />
-            <div>
-              <p className="font-bold text-slate-900">Secure shopping</p>
-              <p className="text-sm text-slate-500">Your payments are protected</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <CreditCard className="text-[#127D61]" />
-            <div>
-              <p className="font-bold text-slate-900">Flexible payments</p>
-              <p className="text-sm text-slate-500">Multiple payment options available</p>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      {/* MAIN FOOTER */}
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:grid-cols-4">
-
-        {/* BRAND */}
-        <div>
-          <p className="text-2xl font-black text-slate-900">GoCart</p>
-
-          <p className="mt-4 text-sm leading-6 text-slate-600">
-            GoCart is a modern ecommerce platform designed to help customers
-            discover products, shop easily, and receive deliveries with speed
-            and reliability.
+          <p className="max-w-md text-sm leading-6 text-slate-600">
+            Discover products easily, shop confidently, and enjoy smooth delivery.
           </p>
 
-          {/* SOCIAL */}
-          <div className="mt-5 flex flex-wrap gap-3">
-            <SocialIcon href="https://www.facebook.com/niwahae" icon={<Facebook size={18} />} />
-            <SocialIcon href="https://twitter.com/edwinniwaha" icon={<Twitter size={18} />} />
-            <SocialIcon href="https://instagram.com/niwaha_edwin" icon={<Instagram size={18} />} />
-            <SocialIcon href="https://www.linkedin.com/in/edwin-niwaha-155089100/" icon={<Linkedin size={18} />} />
-            <SocialIcon href="https://github.com/edwin-niwaha" icon={<Github size={18} />} />
-          </div>
-        </div>
-
-        {/* SHOP */}
-        <FooterSection title="Shop">
-          <FooterLink href="/products">All Products</FooterLink>
-          <FooterLink href="/categories">Browse Categories</FooterLink>
-          <FooterLink href="/cart">Shopping Cart</FooterLink>
-          <FooterLink href="/wishlist">Wishlist</FooterLink>
-        </FooterSection>
-
-        {/* CUSTOMER */}
-        <FooterSection title="Customer">
-          <FooterLink href="/account/orders">My Orders</FooterLink>
-          <FooterLink href="/account/addresses">Shipping Addresses</FooterLink>
-          <FooterLink href="/account/payments">Payments</FooterLink>
-          <FooterLink href="/account/notifications">Notifications</FooterLink>
-        </FooterSection>
-
-        {/* CONTACT + NEWSLETTER */}
-        <div>
-          <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
-            Contact
-          </h3>
-
-          <div className="mt-4 space-y-3 text-sm text-slate-600">
-
-            <a href="tel:+256700000000" className="flex items-center gap-2 hover:text-[#127D61]">
-              <Phone size={16} />
-              +256 700 000 000
+          <div className="flex flex-wrap gap-3 text-sm text-slate-600">
+            <a
+              href="tel:+256703163074"
+              className="inline-flex items-center gap-2 hover:text-[#127D61]"
+            >
+              <Phone size={15} />
+              +256 703 163 074
             </a>
 
-            <a href="mailto:hello@gocart.store" className="flex items-center gap-2 hover:text-[#127D61]">
-              <Mail size={16} />
+            <a
+              href="mailto:hello@gocart.store"
+              className="inline-flex items-center gap-2 hover:text-[#127D61]"
+            >
+              <Mail size={15} />
               hello@gocart.store
             </a>
 
-            <div className="flex items-center gap-2">
-              <MapPin size={16} />
+            <span className="inline-flex items-center gap-2">
+              <MapPin size={15} />
               Kampala, Uganda
-            </div>
-
-            <Link href="/cart" className="flex items-center gap-2 hover:text-[#127D61]">
-              <ShoppingCart size={16} />
-              View Cart
-            </Link>
-
+            </span>
           </div>
 
-          {/* NEWSLETTER */}
-          <div className="mt-6">
-            <p className="text-sm font-semibold text-slate-900">
-              Subscribe to updates
-            </p>
+          {socialLinks.length ? (
+            <div className="flex flex-wrap gap-3">
+              {socialLinks.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:border-[#127D61] hover:text-[#127D61]"
+                >
+                  {item.icon}
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
-            <div className="mt-2 flex overflow-hidden rounded-xl border border-slate-200">
+        <div className="grid gap-2 text-sm">
+          <p className="text-xs font-black uppercase tracking-wide text-slate-900">
+            Quick links
+          </p>
+
+          <FooterLink href="/products">All Products</FooterLink>
+          <FooterLink href="/categories">Categories</FooterLink>
+          <FooterLink href="/wishlist">Wishlist</FooterLink>
+          <FooterLink href="/account/orders">My Orders</FooterLink>
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-xs font-black uppercase tracking-wide text-slate-900">
+            Subscribe to updates
+          </p>
+
+          <p className="text-sm text-slate-600">
+            Get product updates and store news.
+          </p>
+
+          <form onSubmit={handleSubscribe} className="space-y-2">
+            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
               <input
                 type="email"
-                placeholder="Your email"
-                className="w-full px-3 py-2 text-sm outline-none"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+
+                  if (subscribeState !== 'idle') {
+                    setSubscribeState('idle');
+                    setMessage('');
+                  }
+                }}
+                placeholder="Enter your email"
+                aria-label="Email address"
+                className="w-full bg-transparent px-3 py-2.5 text-sm outline-none"
               />
-              <button className="bg-[#127D61] px-3 text-white">
-                <Send size={16} />
+              <button
+                type="submit"
+                disabled={subscribeState === 'loading'}
+                className="inline-flex min-w-[46px] items-center justify-center bg-[#127D61] px-3 text-white transition hover:bg-[#0f6b53] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {subscribeState === 'loading' ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : subscribeState === 'success' ? (
+                  <CheckCircle2 size={16} />
+                ) : (
+                  <Send size={16} />
+                )}
               </button>
             </div>
 
-            <p className="mt-2 text-xs text-slate-500">
-              Get product updates and exclusive offers.
-            </p>
-          </div>
+            {message ? (
+              <p
+                className={`text-xs ${
+                  subscribeState === 'success'
+                    ? 'text-[#127D61]'
+                    : 'text-red-600'
+                }`}
+              >
+                {message}
+              </p>
+            ) : null}
+          </form>
+
+          <Link
+            href="/cart"
+            className="inline-flex items-center gap-2 text-sm text-slate-600 transition hover:text-[#127D61]"
+          >
+            <ShoppingCart size={15} />
+            View cart
+          </Link>
         </div>
       </div>
 
-      {/* BOTTOM */}
       <div className="border-t border-slate-200">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
-
+        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-4 text-xs text-slate-500 md:flex-row md:items-center md:justify-between">
           <p>
-            © {new Date().getFullYear()} <span className="font-semibold text-slate-700">Perpetual Labs</span>. All rights reserved.
+            © {new Date().getFullYear()}{' '}
+            <span className="font-semibold text-slate-700">{appName}</span>. All
+            rights reserved.
           </p>
 
           <div className="flex flex-wrap gap-4">
             <Link href="/privacy" className="hover:text-[#127D61]">
-              Privacy Policy
+              Privacy
             </Link>
-
             <Link href="/terms" className="hover:text-[#127D61]">
-              Terms of Service
+              Terms
             </Link>
-
             <Link href="/support" className="hover:text-[#127D61]">
               Support
             </Link>
           </div>
-
         </div>
       </div>
-    {website ? <a href={website} className="text-sm text-slate-500 underline">Website</a> : null}</footer>
-  );
-}
-
-/* COMPONENTS */
-
-function FooterSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
-        {title}
-      </h3>
-
-      <div className="mt-4 space-y-3 text-sm text-slate-600">
-        {children}
-      </div>
-    </div>
+    </footer>
   );
 }
 
@@ -206,27 +253,8 @@ function FooterLink({
   children: React.ReactNode;
 }) {
   return (
-    <Link href={href} className="block transition hover:text-[#127D61]">
+    <Link href={href} className="text-slate-600 transition hover:text-[#127D61]">
       {children}
     </Link>
-  );
-}
-
-function SocialIcon({
-  href,
-  icon,
-}: {
-  href: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white transition hover:bg-[#127D61]"
-    >
-      {icon}
-    </a>
   );
 }
