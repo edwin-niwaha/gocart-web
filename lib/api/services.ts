@@ -194,6 +194,95 @@ export const cartApi = {
   },
 };
 
+export const reviewApi = {
+  myReviews: async (params?: { product?: number; product_slug?: string }) => {
+    const response = await api.get('/reviews/', { params });
+    return response.data;
+  },
+
+  create: async (payload: {
+    product: number;
+    rating: number;
+    comment: string;
+  }) => {
+    const response = await api.post('/reviews/', payload);
+    return response.data;
+  },
+
+  update: async (
+    id: number,
+    payload: {
+      rating: number;
+      comment: string;
+    }
+  ) => {
+    const response = await api.patch(`/reviews/${id}/`, payload);
+    return response.data;
+  },
+
+  remove: async (id: number) => {
+    const response = await api.delete(`/reviews/${id}/`);
+    return response.data;
+  },
+
+  myReviewForProduct: async (product_slug: string) => {
+    const response = await api.get('/reviews/', {
+      params: { product_slug },
+    });
+
+    const data = response.data;
+
+    if (Array.isArray(data)) return data[0] ?? null;
+    if (Array.isArray(data?.results)) return data.results[0] ?? null;
+
+    return null;
+  },
+};
+
+export const productReviewApi = {
+  listBySlug: async (slug: string) => {
+    const response = await api.get('/product-reviews/', {
+      params: { product_slug: slug },
+    });
+
+    const data = response.data;
+
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.results)) return data.results;
+
+    return [];
+  },
+
+  listByProduct: async ({
+    product,
+    product_slug,
+  }: {
+    product?: number;
+    product_slug?: string;
+  }) => {
+    const response = await api.get('/product-reviews/', {
+      params: {
+        ...(product ? { product } : {}),
+        ...(product_slug ? { product_slug } : {}),
+      },
+    });
+
+    const data = response.data;
+
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.results)) return data.results;
+
+    return [];
+  },
+};
+
+export const productRatingApi = {
+  listByProduct: async (params: { product?: number; product_slug?: string }) => {
+    const response = await api.get('/product-ratings/', { params });
+    return response.data;
+  },
+};
+
 export const wishlistApi = {
   getOrCreate: async () => (await api.post<Wishlist>('/wishlist/', {})).data,
 
