@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Loader2, Star } from 'lucide-react';
-import { catalogApi, productReviewApi } from '@/lib/api/services';
+import { catalogApi, productReviewApi, reviewApi } from '@/lib/api/services';
 import { useAuth } from '@/lib/hooks/use-auth';
 import type { Product, Review } from '@/lib/types';
 
@@ -89,6 +89,7 @@ export default function ProductReviewsPage({
 
   const [product, setProduct] = useState<Product | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [myReview, setMyReview] = useState<Review | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,20 +104,33 @@ export default function ProductReviewsPage({
 
       setError(null);
 
-      const [productData, reviewsData] = await Promise.all([
-        catalogApi.product(String(params.slug)),
-        productReviewApi.listBySlug(String(params.slug)),
-      ]);
+      if (isAuthenticated) {
+        const [productData, reviewsData, myReviewData] = await Promise.all([
+          catalogApi.product(String(params.slug)),
+          productReviewApi.listBySlug(String(params.slug)),
+          reviewApi.myReviewForProduct(String(params.slug)),
+        ]);
 
-      setProduct(productData);
-      setReviews(reviewsData);
+        setProduct(productData);
+        setReviews(reviewsData);
+        setMyReview(myReviewData);
+      } else {
+        const [productData, reviewsData] = await Promise.all([
+          catalogApi.product(String(params.slug)),
+          productReviewApi.listBySlug(String(params.slug)),
+        ]);
+
+        setProduct(productData);
+        setReviews(reviewsData);
+        setMyReview(null);
+      }
     } catch (error: any) {
       setError(getErrorMessage(error, 'Could not load reviews.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [params.slug]);
+  }, [params.slug, isAuthenticated]);
 
   useEffect(() => {
     loadData();
@@ -214,7 +228,7 @@ export default function ProductReviewsPage({
                 href={`/reviews/${product.slug}/write`}
                 className="inline-flex items-center rounded-2xl bg-[var(--brand-green)] px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:opacity-95"
               >
-                Write review
+                {myReview ? 'Edit my review' : 'Write review'}
               </Link>
             ) : null}
 
@@ -323,7 +337,7 @@ export default function ProductReviewsPage({
                     href={`/reviews/${product.slug}/write`}
                     className="inline-flex items-center rounded-2xl bg-[var(--brand-green)] px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:opacity-95"
                   >
-                    Write the first review
+                    {myReview ? 'Edit your review' : 'Write the first review'}
                   </Link>
                 </div>
               ) : null}
