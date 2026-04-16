@@ -472,13 +472,24 @@ export const tenantApi = {
     (await api.patch<TenantMembership>(`/tenants/current/memberships/${id}/`, payload)).data,
 };
 
+export type ContactPayload = {
+  name: string;
+  email: string;
+  message: string;
+  subject?: string;
+};
+
 export const supportApi = {
-  create: async (payload: { name: string; email: string; message: string }) =>
-    (await api.post<SupportMessage>('/support-messages/', payload)).data,
+  create: async (payload: ContactPayload) =>
+    (await api.post<{ detail: string; id?: number }>('/contact/', payload)).data,
 
   list: async () =>
     normalizeList(
-      (await api.get<SupportMessage[] | { results: SupportMessage[] }>('/support-messages/')).data
+      (
+        await api.get<SupportMessage[] | { results: SupportMessage[] }>(
+          '/support-messages/'
+        )
+      ).data
     ),
 
   update: async (id: number, payload: Partial<SupportMessage>) =>

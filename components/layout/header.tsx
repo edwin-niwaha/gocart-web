@@ -1,20 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
+  Headphones,
   LayoutDashboard,
   LogIn,
   LogOut,
   Menu,
   Package,
+  Receipt,
   Search,
   ShoppingCart,
   Store,
+  User,
   X,
-  Receipt,
-  Headphones,
 } from 'lucide-react';
 
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -22,204 +23,432 @@ import { useTenant } from '@/app/providers/TenantProvider';
 import { getBrandPalette } from '@/lib/tenant/theme';
 import { cartApi, orderApi } from '@/lib/api/services';
 
+type NavLinkItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  authOnly?: boolean;
+};
+
+function CountBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+
+  return (
+    <span className="absolute -right-2 -top-2 min-w-[20px] rounded-full bg-amber-400 px-1.5 text-center text-[11px] font-extrabold text-black">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+function IconAction({
+  href,
+  icon: Icon,
+  label,
+  count,
+  onClick,
+}: {
+  href?: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  count?: number;
+  onClick?: () => void;
+}) {
+  const content = (
+    <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/15">
+      <Icon size={19} />
+      {typeof count === 'number' ? <CountBadge count={count} /> : null}
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+
+  if (href) {
+    return <Link href={href}>{content}</Link>;
+  }
+
+  return (
+    <button type="button" onClick={onClick} aria-label={label}>
+      {content}
+    </button>
+  );
+}
+
+function DesktopNavLink({
+  href,
+  label,
+  icon: Icon,
+  active,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+        active
+          ? 'bg-white text-slate-900'
+          : 'text-white/85 hover:bg-white/10 hover:text-white'
+      }`}
+    >
+      <Icon size={16} />
+      <span>{label}</span>
+    </Link>
+  );
+}
+
+function MobileNavLink({
+  href,
+  label,
+  icon: Icon,
+  active,
+  onNavigate,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  active: boolean;
+  onNavigate: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+        active
+          ? 'bg-white text-slate-900'
+          : 'text-white/90 hover:bg-white/10 hover:text-white'
+      }`}
+    >
+      <Icon size={18} />
+      <span>{label}</span>
+    </Link>
+  );
+}
+
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
+
   const { user, hydrated, logout, canAccessDashboard } = useAuthStore();
+  const tenant = useTenant();
+  const palette = getBrandPalette(tenant?.branding);
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [cartCount, setCartCount] = useState(0);
   const [ordersCount, setOrdersCount] = useState(0);
 
-  const tenant = useTenant();
-  const palette = getBrandPalette(tenant?.branding);
-
   const appName = tenant?.branding?.app_name || 'GoCart';
   const slogan = 'Shop • Sell • Deliver';
   const dashboardAllowed = canAccessDashboard();
+  const isAuthenticated = Boolean(user);
+
+  const navLinks = useMemo<NavLinkItem[]>(
+    () => [
+      { href: '/', label: 'Home', icon: Store },
+      { href: '/products', label: 'Shop', icon: Package },
+      { href: '/cart', label: 'Cart', icon: ShoppingCart },
+      { href: '/support', label: 'Support', icon: Headphones },
+      { href: '/account', label: 'Account', icon: User, authOnly: true },
+    ],
+    []
+  );
 
   useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    let active = true;
+
     async function loadCounts() {
       try {
         const items = await cartApi.listItems();
-        const count = items.reduce(
+        const nextCartCount = items.reduce(
           (sum, item) => sum + Number(item.quantity || 0),
           0
         );
-        setCartCount(count);
+
+        if (active) {
+          setCartCount(nextCartCount);
+        }
+
+        if (!user) {
+          if (active) {
+            setOrdersCount(0);
+          }
+          return;
+        }
 
         const orders = await orderApi.list();
-        setOrdersCount(orders.length);
+
+        if (active) {
+          setOrdersCount(orders.length);
+        }
       } catch {
-        setCartCount(0);
-        setOrdersCount(0);
+        if (active) {
+          setCartCount(0);
+          setOrdersCount(0);
+        }
       }
     }
 
     loadCounts();
-  }, []);
 
-function handleSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
-  e.preventDefault();
-  const term = search.trim();
-
-  if (!term) {
-    router.push('/products');
-    return;
-  }
-
-  router.push(`/products?search=${encodeURIComponent(term)}`);
-  setMobileOpen(false);
-}
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
-  const navLinks = [
-    { href: '/', label: 'Home', icon: Store },
-    { href: '/products', label: 'Shop', icon: Package },
-    { href: '/cart', label: 'Cart', icon: ShoppingCart },
-    { href: '/support', label: 'Support', icon: Headphones },
-  ];
+  const visibleNavLinks = navLinks.filter((link) => {
+    if (link.authOnly && !isAuthenticated) return false;
+    return true;
+  });
+
+  function handleSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    const term = search.trim();
+
+    if (!term) {
+      router.push('/products');
+      return;
+    }
+
+    router.push(`/products?search=${encodeURIComponent(term)}`);
+    setMobileOpen(false);
+  }
+
+  async function handleLogout() {
+    await logout();
+    setMobileOpen(false);
+    router.push('/');
+  }
 
   return (
-    <header className="sticky top-0 z-50 shadow-md">
-      <div className="bg-[#131921] text-white">
-        <div className="mx-auto max-w-7xl px-4 py-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <Link href="/" className="flex items-center gap-3">
-              <div
-                className="flex h-10 w-10 items-center justify-center rounded-md font-black text-white"
-                style={{ backgroundColor: palette.primary }}
-              >
-                G
-              </div>
+    <header className="sticky top-0 z-50 border-b border-slate-200 bg-slate-950 text-white shadow-sm">
+      <div className="mx-auto max-w-7xl px-4">
+        <div className="flex min-h-[76px] items-center gap-3 py-3">
+          <Link href="/" className="flex min-w-0 items-center gap-3">
+            <div
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-base font-black text-white shadow-sm"
+              style={{ backgroundColor: palette.primary }}
+            >
+              G
+            </div>
 
-              <div>
-                <p className="text-lg font-black">{appName}</p>
-                <p className="text-xs text-gray-300">{slogan}</p>
-              </div>
-            </Link>
+            <div className="min-w-0">
+              <p className="truncate text-lg font-extrabold tracking-tight">
+                {appName}
+              </p>
+              <p className="truncate text-xs text-white/65">{slogan}</p>
+            </div>
+          </Link>
 
+          <form
+            onSubmit={handleSearchSubmit}
+            className="hidden flex-1 items-center overflow-hidden rounded-xl border border-slate-200 bg-white md:flex"
+          >
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search products"
+              className="h-11 flex-1 border-0 bg-transparent px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+            />
+            <button
+              type="submit"
+              className="flex h-11 w-12 items-center justify-center bg-amber-300 text-slate-900 transition hover:bg-amber-400"
+              aria-label="Search"
+            >
+              <Search size={18} />
+            </button>
+          </form>
+
+          <div className="ml-auto flex items-center gap-2">
+            <IconAction
+              href="/cart"
+              icon={ShoppingCart}
+              label="Cart"
+              count={cartCount}
+            />
+
+            {isAuthenticated ? (
+              <IconAction
+                href="/account/orders"
+                icon={Receipt}
+                label="Orders"
+                count={ordersCount}
+              />
+            ) : null}
+
+            {hydrated ? (
+              isAuthenticated ? (
+                <>
+                  <Link
+                    href="/account"
+                    className="hidden rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 lg:inline-flex"
+                  >
+                    My Account
+                  </Link>
+
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="hidden items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 lg:inline-flex"
+                  >
+                    <LogOut size={16} />
+                    Sign out
+                  </button>
+                </>
+              ) : (
+                <Link
+                  href="/auth/login"
+                  className="hidden items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition lg:inline-flex"
+                  style={{ backgroundColor: palette.primary }}
+                >
+                  <LogIn size={16} />
+                  Sign in
+                </Link>
+              )
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => setMobileOpen((prev) => !prev)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 transition hover:bg-white/15 lg:hidden"
+              aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            >
+              {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+          </div>
+        </div>
+
+        <div className="hidden items-center justify-between gap-3 border-t border-white/10 py-3 lg:flex">
+          <nav className="flex items-center gap-2">
+            {visibleNavLinks.map((link) => (
+              <DesktopNavLink
+                key={link.href}
+                href={link.href}
+                label={link.label}
+                icon={link.icon}
+                active={isActive(link.href)}
+              />
+            ))}
+
+            {dashboardAllowed ? (
+              <DesktopNavLink
+                href="/dashboard"
+                label="Dashboard"
+                icon={LayoutDashboard}
+                active={isActive('/dashboard')}
+              />
+            ) : null}
+          </nav>
+
+          {hydrated ? (
+            isAuthenticated ? (
+              <div className="text-sm text-white/70">
+                Signed in as{' '}
+                <span className="font-semibold text-white">
+                  {user?.first_name || user?.username || 'User'}
+                </span>
+              </div>
+            ) : (
+              <div className="text-sm text-white/70">
+                You are browsing as a guest
+              </div>
+            )
+          ) : null}
+        </div>
+
+        {mobileOpen ? (
+          <div className="border-t border-white/10 py-4 lg:hidden">
             <form
               onSubmit={handleSearchSubmit}
-              className="order-3 flex w-full flex-1 overflow-hidden rounded-md border-2 border-transparent bg-white lg:order-none lg:min-w-[320px]"
+              className="mb-4 flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white"
             >
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search products"
-                className="h-10 flex-1 border-0 px-4 text-sm text-[#0F1111] outline-none"
+                className="h-11 flex-1 border-0 bg-transparent px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
               />
               <button
                 type="submit"
-                className="flex h-10 w-12 items-center justify-center bg-[#FEBD69] text-[#111111] transition hover:bg-[#f3a847]"
+                className="flex h-11 w-12 items-center justify-center bg-amber-300 text-slate-900"
+                aria-label="Search"
               >
                 <Search size={18} />
               </button>
             </form>
 
-            <div className="ml-auto flex items-center gap-3">
-              <Link href="/cart" className="relative">
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white/10">
-                  <ShoppingCart size={20} />
-                </div>
-                {cartCount > 0 && (
-                  <span className="absolute -top-2 -right-2 rounded-full bg-[#f08804] px-1.5 text-xs font-bold text-black">
-                    {cartCount > 99 ? '99+' : cartCount}
-                  </span>
-                )}
-              </Link>
-
-              {user && (
-                <Link href="/account/orders" className="relative">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white/10">
-                    <Receipt size={20} />
-                  </div>
-                  {ordersCount > 0 && (
-                    <span className="absolute -top-2 -right-2 rounded-full bg-[#f08804] px-1.5 text-xs font-bold text-black">
-                      {ordersCount}
-                    </span>
-                  )}
-                </Link>
-              )}
-
-              {!hydrated ? null : user ? (
-                <button
-                  onClick={() => logout()}
-                  className="rounded-md bg-white/10 px-3 py-2 text-sm font-bold"
-                >
-                  <LogOut size={16} />
-                </button>
-              ) : (
-                <Link
-                  href="/auth/login"
-                  className="rounded-md px-4 py-2 text-sm font-bold text-white"
-                  style={{ backgroundColor: palette.primary }}
-                >
-                  <LogIn size={16} />
-                </Link>
-              )}
-
-              <button
-                onClick={() => setMobileOpen((prev) => !prev)}
-                className="rounded-md bg-white/10 p-2 lg:hidden"
-              >
-                {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-3 hidden lg:flex items-center gap-2">
-            {navLinks.map((link) => {
-              const Icon = link.icon;
-              const active = isActive(link.href);
-
-              return (
-                <Link
+            <nav className="flex flex-col gap-2">
+              {visibleNavLinks.map((link) => (
+                <MobileNavLink
                   key={link.href}
                   href={link.href}
-                  className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition ${
-                    active
-                      ? 'bg-white text-black'
-                      : 'text-gray-200 hover:bg-white/10'
-                  }`}
-                >
-                  <Icon size={16} />
-                  {link.label}
-                </Link>
-              );
-            })}
+                  label={link.label}
+                  icon={link.icon}
+                  active={isActive(link.href)}
+                  onNavigate={() => setMobileOpen(false)}
+                />
+              ))}
 
-            {dashboardAllowed && (
-              <Link
-                href="/dashboard"
-                className="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold text-gray-200 hover:bg-white/10"
-              >
-                <LayoutDashboard size={16} />
-                Dashboard
-              </Link>
-            )}
-          </div>
+              {dashboardAllowed ? (
+                <MobileNavLink
+                  href="/dashboard"
+                  label="Dashboard"
+                  icon={LayoutDashboard}
+                  active={isActive('/dashboard')}
+                  onNavigate={() => setMobileOpen(false)}
+                />
+              ) : null}
 
-          {mobileOpen && (
-            <div className="pt-3 lg:hidden">
-              <div className="flex flex-col gap-2">
-                {navLinks.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className="rounded-md p-3 hover:bg-white/10"
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
+              <div className="mt-2 border-t border-white/10 pt-3">
+                {hydrated ? (
+                  isAuthenticated ? (
+                    <div className="flex flex-col gap-2">
+                      <Link
+                        href="/account"
+                        onClick={() => setMobileOpen(false)}
+                        className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+                      >
+                        <User size={18} />
+                        My Account
+                      </Link>
+
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold text-white hover:bg-white/10"
+                      >
+                        <LogOut size={18} />
+                        Sign out
+                      </button>
+                    </div>
+                  ) : (
+                    <Link
+                      href="/auth/login"
+                      onClick={() => setMobileOpen(false)}
+                      className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white"
+                      style={{ backgroundColor: palette.primary }}
+                    >
+                      <LogIn size={16} />
+                      Sign in
+                    </Link>
+                  )
+                ) : null}
               </div>
-            </div>
-          )}
-        </div>
+            </nav>
+          </div>
+        ) : null}
       </div>
     </header>
   );
