@@ -41,7 +41,11 @@ export function LoginForm() {
         <input className="input" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <input className="input" type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
       </div>
-
+      <div className="text-right">
+        <Link href="/auth/forgot-password" className="text-sm font-bold text-[#127D61]">
+          Forgot password?
+        </Link>
+      </div>
       {error ? <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
       <button disabled={busy} className="btn w-full bg-[#127D61] text-white disabled:opacity-60">

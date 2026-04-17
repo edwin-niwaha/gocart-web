@@ -1,12 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { Heart, ShoppingCart, Star, Eye } from 'lucide-react';
+import { Heart, ShoppingCart, Star, Eye, ImageIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { Product } from '@/lib/types';
-import { formatCurrency, getImage } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import { cartApi, wishlistApi } from '@/lib/api/services';
 import { showError, showInfo, showSuccess } from '@/lib/toast';
+
+const FALLBACK_IMAGE =
+  'https://via.placeholder.com/400x300.png?text=Product';
 
 function renderStars(rating: number) {
   return (
@@ -46,22 +49,63 @@ function getErrorMessage(error: any, fallback: string) {
   return fallback;
 }
 
+function toAbsoluteImageUrl(url?: string | null) {
+  if (!url) return null;
+
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  const base =
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    '';
+
+  if (!base) return url;
+
+  return `${base.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
+}
+
+function resolveProductImage(product: any) {
+  const raw =
+    product?.hero_image ||
+    product?.image_urls?.[0] ||
+    product?.image ||
+    product?.image_url ||
+    product?.thumbnail ||
+    product?.thumbnail_url ||
+    product?.featured_image ||
+    product?.featured_image_url ||
+    product?.photo ||
+    product?.photo_url ||
+    product?.product_image ||
+    product?.product_image_url ||
+    null;
+
+  return toAbsoluteImageUrl(raw);
+}
+
 export function ProductCard({ product }: { product: Product }) {
-  const safePrice = Number(product?.base_price ?? product?.price ?? 0);
-  const rating = Number(product?.average_rating ?? 0);
-  const reviews = Number(product?.total_reviews ?? 0);
+  const safePrice = Number(product?.base_price ?? (product as any)?.price ?? 0);
+  const rating = Number((product as any)?.average_rating ?? 0);
+  const reviews = Number((product as any)?.total_reviews ?? 0);
 
   const [addingCart, setAddingCart] = useState(false);
   const [addingWishlist, setAddingWishlist] = useState(false);
   const [isWishlisted, setIsWishlisted] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const firstAvailableVariant = useMemo(
     () =>
       product?.variants?.find(
-        (variant) => variant.is_active && Number(variant.stock_quantity) > 0
+        (variant: any) => variant.is_active && Number(variant.stock_quantity) > 0
       ),
     [product]
   );
+
+  const resolvedImage = resolveProductImage(product);
+  const imageSrc = !imageError && resolvedImage ? resolvedImage : FALLBACK_IMAGE;
+  const hasImage = !imageError && Boolean(resolvedImage);
 
   async function handleAddToCart() {
     try {
@@ -73,7 +117,7 @@ export function ProductCard({ product }: { product: Product }) {
       setAddingCart(true);
 
       await cartApi.addItem({
-        variant_id: firstAvailableVariant.id,
+        variant_id: (firstAvailableVariant as any).id,
         quantity: 1,
       });
 
@@ -111,12 +155,22 @@ export function ProductCard({ product }: { product: Product }) {
     <div className="group flex h-full w-full flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
       <div className="relative overflow-hidden">
         <Link href={`/products/${product.slug}`} className="block">
-          <div className="relative">
-            <img
-              src={getImage(product.hero_image, product.image_urls)}
-              alt={product.title}
-              className="h-60 w-full object-cover transition-transform duration-500 group-hover:scale-105"
-            />
+          <div className="relative h-60 w-full overflow-hidden bg-slate-100">
+            {hasImage ? (
+              <img
+                src={imageSrc}
+                alt={product.title}
+                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-100">
+                <ImageIcon size={28} className="text-slate-400" />
+                <span className="text-xs font-semibold text-slate-400">
+                  No image
+                </span>
+              </div>
+            )}
 
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/20 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
           </div>
@@ -125,12 +179,12 @@ export function ProductCard({ product }: { product: Product }) {
         <div className="absolute left-4 top-4">
           <span
             className={`rounded-full px-3 py-1 text-xs font-semibold shadow-sm backdrop-blur ${
-              product.is_in_stock
+              (product as any).is_in_stock
                 ? 'bg-white/90 text-emerald-700'
                 : 'bg-white/90 text-slate-500'
             }`}
           >
-            {product.is_in_stock ? 'In stock' : 'Out of stock'}
+            {(product as any).is_in_stock ? 'In stock' : 'Out of stock'}
           </span>
         </div>
 
@@ -153,7 +207,7 @@ export function ProductCard({ product }: { product: Product }) {
             <button
               type="button"
               onClick={handleAddToCart}
-              disabled={!product.is_in_stock || addingCart}
+              disabled={!(product as any).is_in_stock || addingCart}
               className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-[#127D61] px-4 text-sm font-semibold text-white shadow-lg transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <ShoppingCart size={16} />
@@ -206,7 +260,7 @@ export function ProductCard({ product }: { product: Product }) {
             <button
               type="button"
               onClick={handleAddToCart}
-              disabled={!product.is_in_stock || addingCart}
+              disabled={!(product as any).is_in_stock || addingCart}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-800 transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--brand-green)] hover:text-[var(--brand-green)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <ShoppingCart size={16} />

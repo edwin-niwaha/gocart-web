@@ -49,9 +49,6 @@ export function normalizeList<T>(data: T[] | { results: T[] }): T[] {
 export const api = axios.create({
   baseURL: API_ROOT,
   timeout: REQUEST_TIMEOUT,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -63,8 +60,15 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
   if (tenantSlug) {
     config.headers['X-Tenant-Slug'] = tenantSlug;
+  }
+
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  } else if (!config.headers['Content-Type']) {
+    config.headers['Content-Type'] = 'application/json';
   }
 
   return config;
@@ -103,7 +107,14 @@ api.interceptors.response.use(
 
     try {
       refreshPromise ??= axios
-        .post(`${API_ROOT}/auth/token/refresh/`, { refresh }, { headers: { 'Content-Type': 'application/json' }, timeout: REQUEST_TIMEOUT })
+        .post(
+          `${API_ROOT}/auth/token/refresh/`,
+          { refresh },
+          {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: REQUEST_TIMEOUT,
+          }
+        )
         .then((res) => {
           const newAccess = res.data.access as string;
           if (typeof window !== 'undefined') {

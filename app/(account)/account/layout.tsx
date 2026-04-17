@@ -2,11 +2,23 @@
 
 import Link from 'next/link';
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Bell, Heart, MapPin, Package, Wallet } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
+import {
+  Bell,
+  Heart,
+  MapPin,
+  Package,
+  Wallet,
+  User,
+  UserCircle2,
+  ShieldCheck,
+} from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/auth-store';
 
 const links = [
+  { href: '/account', label: 'Overview', icon: User },
+  { href: '/account/profile', label: 'Profile', icon: UserCircle2 },
+  { href: '/account/security', label: 'Security', icon: ShieldCheck },
   { href: '/account/orders', label: 'Orders', icon: Package },
   { href: '/account/wishlist', label: 'Wishlist', icon: Heart },
   { href: '/account/addresses', label: 'Addresses', icon: MapPin },
@@ -16,6 +28,7 @@ const links = [
 
 export default function AccountLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, hydrated } = useAuthStore();
 
   useEffect(() => {
@@ -34,13 +47,27 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
     <div className="grid gap-6 py-8 lg:grid-cols-[280px_1fr]">
       <aside className="h-fit rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
         <p className="text-sm font-bold text-[#127D61]">My account</p>
-        <h2 className="mt-2 text-2xl font-black text-slate-900">{user.username || user.email}</h2>
+        <h2 className="mt-2 text-2xl font-black text-slate-900">
+          {user.username || user.email}
+        </h2>
         <p className="mt-1 text-sm text-slate-500">{user.email}</p>
+
         <div className="mt-5 space-y-2">
           {links.map((link) => {
             const Icon = link.icon;
+            const active =
+              pathname === link.href || pathname.startsWith(`${link.href}/`);
+
             return (
-              <Link key={link.href} href={link.href} className="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50">
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition ${
+                  active
+                    ? 'bg-[#127D61] text-white'
+                    : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
                 <Icon size={18} />
                 {link.label}
               </Link>
@@ -48,6 +75,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
           })}
         </div>
       </aside>
+
       <main>{children}</main>
     </div>
   );

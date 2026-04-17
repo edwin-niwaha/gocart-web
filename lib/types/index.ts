@@ -153,3 +153,35 @@ export type TenantFeatureFlag = {
   enabled: boolean;
   description?: string;
 };
+
+export type CustomerAddressRegion =
+  | 'kampala_area'
+  | 'entebbe_area'
+  | 'central_region'
+  | 'eastern_region'
+  | 'northern_region'
+  | 'western_region'
+  | 'rest_of_kampala';
+
+export type CustomerAddress = {
+  id: number;
+  street_name: string;
+  city: string;
+  phone_number: string;
+  additional_telephone?: string;
+  additional_information?: string;
+  region: CustomerAddressRegion;
+  is_default: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type CustomerAddressPayload = {
+  street_name: string;
+  city: string;
+  phone_number?: string;
+  additional_telephone?: string;
+  additional_information?: string;
+  region: CustomerAddressRegion;
+  is_default?: boolean;
+};

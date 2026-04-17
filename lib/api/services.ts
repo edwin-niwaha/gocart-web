@@ -82,6 +82,65 @@ export const authApi = {
     return data;
   },
 
+  updateProfile: async (payload: FormData) => {
+    const { data } = await api.patch('/auth/me/', payload, {
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': undefined,
+      },
+    });
+    return data;
+  },
+
+  updateProfileJson: async (payload: {
+    username: string;
+    first_name: string;
+    last_name: string;
+  }) => {
+    const { data } = await api.patch('/auth/me/', payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+    });
+    return data;
+  },
+
+
+  changePassword: async (payload: {
+    current_password: string;
+    new_password: string;
+    new_password_confirm: string;
+  }) => {
+    const { data } = await api.post('/auth/change-password/', payload);
+    return data;
+  },
+
+  forgotPassword: async (email: string) => {
+    const { data } = await api.post('/auth/forgot-password/', { email });
+    return data;
+  },
+
+  resetPassword: async (payload: {
+    email: string;
+    code: string;
+    password: string;
+    password_confirm: string;
+  }) => {
+    const { data } = await api.post('/auth/reset-password/', payload);
+    return data;
+  },
+
+  sendEmailVerification: async () => {
+    const { data } = await api.post('/auth/send-email-verification/');
+    return data;
+  },
+
+  verifyEmail: async (code: string) => {
+    const { data } = await api.post('/auth/verify-email/', { code });
+    return data;
+  },
+  
   logout: async () => {
     const refresh = getRefreshToken();
     try {
@@ -309,6 +368,7 @@ export const wishlistApi = {
     }
   },
 };
+
 
 export const orderApi = {
   list: async () =>
