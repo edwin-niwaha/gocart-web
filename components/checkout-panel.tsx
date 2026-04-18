@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
   addressApi,
@@ -8,6 +9,7 @@ import {
   orderApi,
   paymentApi,
 } from '@/lib/api/services';
+import { notifyCartUpdated } from '@/lib/cart-events';
 import type { Address, CartItem } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 
@@ -137,13 +139,13 @@ function AddressModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-      <div className="w-full max-w-2xl rounded-[1.5rem] bg-white p-6 shadow-2xl">
+      <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
-          <h3 className="text-xl font-black">Add delivery address</h3>
+          <h3 className="text-xl font-black text-gray-900">Add delivery address</h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border px-3 py-1 text-sm font-bold"
+            className="rounded-full border border-gray-200 px-3 py-1 text-sm font-bold text-gray-700"
             disabled={loading}
           >
             Close
@@ -205,7 +207,7 @@ function AddressModal({
               checked={form.is_default}
               onChange={(e) => setField('is_default', e.target.checked)}
             />
-            <span className="text-sm font-semibold">Set as default</span>
+            <span className="text-sm font-semibold text-gray-700">Set as default</span>
           </label>
         </div>
 
@@ -214,7 +216,7 @@ function AddressModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="flex-1 rounded-2xl border px-4 py-3 font-bold"
+            className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 font-bold text-gray-700"
           >
             Cancel
           </button>
@@ -222,7 +224,7 @@ function AddressModal({
             type="button"
             onClick={submit}
             disabled={loading}
-            className="flex-1 rounded-2xl bg-[var(--brand-green)] px-4 py-3 font-bold text-white disabled:opacity-60"
+            className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-60"
           >
             {loading ? 'Saving...' : 'Save address'}
           </button>
@@ -305,6 +307,10 @@ export function CheckoutPanel() {
           : Number(item.variant?.price || 0) * item.quantity;
       return sum + lineTotal;
     }, 0);
+  }, [items]);
+
+  const itemCount = useMemo(() => {
+    return items.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
   }, [items]);
 
   const selectedAddress = useMemo(() => {
@@ -447,30 +453,19 @@ export function CheckoutPanel() {
       return;
     }
 
-    const order = await orderApi.checkout({
+    const response = await orderApi.checkout({
       address_id: selectedAddressId,
+      payment_method: 'CASH',
     });
 
-    try {
-      await paymentApi.create({
-        order: order.id,
-        provider: 'CASH',
-        amount: total,
-        currency: 'UGX',
-      } as any);
-    } catch (paymentError: any) {
-      setFeedback(
-        paymentError?.response?.data?.detail ||
-          paymentError?.message ||
-          'Order placed but payment record could not be saved.',
-        'error'
-      );
-    }
+    const order = response?.order ?? response;
+
+    notifyCartUpdated();
+    await loadCheckoutData();
 
     setFeedback(`Order ${order.slug} placed successfully.`, 'success');
-    await loadCheckoutData();
-    router.push('/orders');
-  }, [loadCheckoutData, router, selectedAddressId, total]);
+    router.push('/account/orders');
+  }, [loadCheckoutData, router, selectedAddressId]);
 
   const handleMTNCheckout = useCallback(async () => {
     if (!selectedAddressId) {
@@ -505,9 +500,11 @@ export function CheckoutPanel() {
 
     const result = await paymentApi.finalizeOrder(payment.reference);
 
-    setFeedback(`Order ${result.order.slug} placed successfully.`, 'success');
+    notifyCartUpdated();
     await loadCheckoutData();
-    router.push('/orders');
+
+    setFeedback(`Order ${result.order.slug} placed successfully.`, 'success');
+    router.push('/account/orders');
   }, [loadCheckoutData, mtnPhone, pollPaymentStatus, router, selectedAddressId]);
 
   const onPlaceOrder = async () => {
@@ -558,252 +555,372 @@ export function CheckoutPanel() {
     }
   };
 
+  const getItemTitle = (item: CartItem) => {
+    return (
+      (item as any).product?.title ??
+      (item as any).product_variant?.product?.title ??
+      (item as any).variant?.product?.title ??
+      'Cart item'
+    );
+  };
+
+  const getVariantLabel = (item: CartItem) => {
+    return (
+      (item as any).product_variant?.name ??
+      (item as any).variant?.name ??
+      (item as any).product_variant?.sku ??
+      (item as any).variant?.sku ??
+      ''
+    );
+  };
+
   return (
     <>
-      <div className="space-y-5">
-        <div className="card space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="badge">Delivery address</p>
-              <h2 className="mt-2 text-2xl font-black">Choose address</h2>
-            </div>
+      <main className="min-h-screen bg-gray-50">
+        <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="grid gap-6 lg:grid-cols-[1.6fr_0.9fr]">
+            <div className="space-y-6">
+              <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50">
+                      <ShieldCheck className="h-6 w-6 text-emerald-600" />
+                    </div>
 
-            <button
-              type="button"
-              onClick={() => setAddressModalVisible(true)}
-              className="rounded-2xl border px-4 py-2 text-sm font-bold"
-            >
-              + Add new
-            </button>
-          </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Checkout
+                      </p>
+                      <h1 className="mt-1 text-2xl font-extrabold text-gray-900">
+                        Complete your order
+                      </h1>
+                      <p className="mt-2 max-w-2xl text-sm text-gray-500">
+                        Select your delivery details, choose a payment method, and
+                        review your order before placing it.
+                      </p>
+                    </div>
+                  </div>
 
-          {!addresses.length ? (
-            <div className="rounded-2xl border border-dashed p-5 text-sm text-slate-500">
-              No address yet. Add a delivery address to continue with checkout.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {addresses.map((item: any) => {
-                const selected = item.id === selectedAddressId;
-                const expanded = item.id === expandedAddressId;
-
-                return (
-                  <div
-                    key={item.id}
-                    className={`rounded-2xl border p-4 ${
-                      selected
-                        ? 'border-[var(--brand-green)] bg-emerald-50'
-                        : 'border-slate-200 bg-white'
-                    }`}
+                  <button
+                    type="button"
+                    onClick={() => setAddressModalVisible(true)}
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedAddressId(item.id)}
-                        className="flex-1 text-left"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-extrabold text-slate-900">
-                            {item.label || item.city}
-                          </p>
-                          {item.is_default ? (
-                            <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-[var(--brand-green)]">
-                              Default
-                            </span>
-                          ) : null}
-                          {selected ? (
-                            <span className="rounded-full bg-[var(--brand-green)] px-2 py-1 text-[11px] font-bold text-white">
-                              Selected
-                            </span>
+                    + Add new address
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Delivery
+                  </p>
+                  <h2 className="mt-1 text-xl font-extrabold text-gray-900">
+                    Choose address
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Pick where your order should be delivered.
+                  </p>
+                </div>
+
+                {!addresses.length ? (
+                  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5 text-sm text-gray-500">
+                    No address yet. Add a delivery address to continue with checkout.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {addresses.map((item: any) => {
+                      const selected = item.id === selectedAddressId;
+                      const expanded = item.id === expandedAddressId;
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`rounded-3xl border p-4 transition ${
+                            selected
+                              ? 'border-emerald-600 bg-emerald-50'
+                              : 'border-gray-200 bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAddressId(item.id)}
+                              className="flex-1 text-left"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-extrabold text-gray-900">
+                                  {item.label || item.city}
+                                </p>
+
+                                {item.is_default ? (
+                                  <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                                    Default
+                                  </span>
+                                ) : null}
+
+                                {selected ? (
+                                  <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white">
+                                    Selected
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <p className="mt-1 text-sm text-gray-500">{item.city}</p>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedAddressId((prev) =>
+                                  prev === item.id ? null : item.id
+                                )
+                              }
+                              className="rounded-full border border-gray-200 px-3 py-1 text-sm font-bold text-gray-700"
+                            >
+                              {expanded ? 'Hide' : 'View'}
+                            </button>
+                          </div>
+
+                          {expanded ? (
+                            <div className="mt-3 space-y-1 border-t border-gray-200 pt-3 text-sm text-gray-600">
+                              {item.street_name ? <p>{item.street_name}</p> : null}
+                              {item.region ? <p>{item.region}</p> : null}
+                              {item.phone_number ? <p>Phone: {item.phone_number}</p> : null}
+                              {item.additional_telephone ? (
+                                <p>Alt: {item.additional_telephone}</p>
+                              ) : null}
+                              {item.additional_information ? (
+                                <p>{item.additional_information}</p>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
-                        <p className="mt-1 text-sm text-slate-500">
-                          {item.city}
-                        </p>
-                      </button>
+                      );
+                    })}
 
+                    {!!selectedAddress && !selectedAddress.is_default && (
                       <button
                         type="button"
-                        onClick={() =>
-                          setExpandedAddressId((prev) =>
-                            prev === item.id ? null : item.id
-                          )
-                        }
-                        className="rounded-full border px-3 py-1 text-sm font-bold"
+                        onClick={makeDefaultAddress}
+                        className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
                       >
-                        {expanded ? '-' : '+'}
+                        Make selected address default
                       </button>
-                    </div>
-
-                    {expanded ? (
-                      <div className="mt-3 space-y-1 text-sm text-slate-600">
-                        {item.street_name ? <p>{item.street_name}</p> : null}
-                        {item.region ? <p>{item.region}</p> : null}
-                        {item.phone_number ? <p>Phone: {item.phone_number}</p> : null}
-                        {item.additional_telephone ? (
-                          <p>Alt: {item.additional_telephone}</p>
-                        ) : null}
-                        {item.additional_information ? (
-                          <p>{item.additional_information}</p>
-                        ) : null}
-                      </div>
-                    ) : null}
+                    )}
                   </div>
-                );
-              })}
+                )}
+              </div>
 
-              {!!selectedAddress && !selectedAddress.is_default && (
-                <button
-                  type="button"
-                  onClick={makeDefaultAddress}
-                  className="rounded-2xl border px-4 py-3 text-sm font-bold"
-                >
-                  Make selected address default
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+              <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Payment
+                  </p>
+                  <h2 className="mt-1 text-xl font-extrabold text-gray-900">
+                    Choose how to pay
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Select your preferred payment method.
+                  </p>
+                </div>
 
-        <div className="card space-y-4">
-          <div>
-            <p className="badge">Payment method</p>
-            <h2 className="mt-2 text-2xl font-black">Choose how to pay</h2>
-          </div>
+                <div className="space-y-3">
+                  {PAYMENT_OPTIONS.map((option) => {
+                    const selected = paymentProvider === option.value;
 
-          <div className="space-y-3">
-            {PAYMENT_OPTIONS.map((option) => {
-              const selected = paymentProvider === option.value;
-
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => {
-                    if (option.disabled) {
-                      setFeedback('Airtel Money is coming soon.', 'info');
-                      return;
-                    }
-                    setPaymentProvider(option.value);
-                  }}
-                  className={`w-full rounded-2xl border p-4 text-left ${
-                    selected
-                      ? 'border-[var(--brand-green)] bg-emerald-50'
-                      : 'border-slate-200 bg-white'
-                  } ${option.disabled ? 'opacity-70' : ''}`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p
-                        className={`font-extrabold ${
-                          selected ? 'text-[var(--brand-green)]' : 'text-slate-900'
-                        }`}
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          if (option.disabled) {
+                            setFeedback('Airtel Money is coming soon.', 'info');
+                            return;
+                          }
+                          setPaymentProvider(option.value);
+                        }}
+                        className={`w-full rounded-3xl border p-4 text-left transition ${
+                          selected
+                            ? 'border-emerald-600 bg-emerald-50'
+                            : 'border-gray-200 bg-gray-50'
+                        } ${option.disabled ? 'opacity-70' : ''}`}
                       >
-                        {option.label}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {option.subtitle}
-                      </p>
-                    </div>
-                    <div
-                      className={`mt-1 h-5 w-5 rounded-full border-2 ${
-                        selected
-                          ? 'border-[var(--brand-green)] bg-[var(--brand-green)]'
-                          : 'border-slate-300'
-                      }`}
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p
+                              className={`font-extrabold ${
+                                selected ? 'text-emerald-700' : 'text-gray-900'
+                              }`}
+                            >
+                              {option.label}
+                            </p>
+                            <p className="mt-1 text-sm text-gray-500">
+                              {option.subtitle}
+                            </p>
+                          </div>
+
+                          <div
+                            className={`mt-1 h-5 w-5 rounded-full border-2 ${
+                              selected
+                                ? 'border-emerald-600 bg-emerald-600'
+                                : 'border-gray-300'
+                            }`}
+                          />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {paymentProvider === 'MTN' ? (
+                  <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                    <label className="text-sm font-bold text-gray-800">
+                      MTN phone number
+                    </label>
+                    <input
+                      className="input mt-2"
+                      placeholder="078XXXXXXX or +25678XXXXXXX"
+                      value={mtnPhone}
+                      onChange={(e) => setMtnPhone(e.target.value)}
+                      disabled={isBusy}
                     />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {paymentProvider === 'MTN' ? (
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-800">
-                MTN phone number
-              </label>
-              <input
-                className="input"
-                placeholder="078XXXXXXX or +25678XXXXXXX"
-                value={mtnPhone}
-                onChange={(e) => setMtnPhone(e.target.value)}
-                disabled={isBusy}
-              />
-              <p className="text-xs text-slate-500">
-                Use the number that will receive and approve the MTN prompt.
-              </p>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="card space-y-4">
-          <div>
-            <p className="badge">Order summary</p>
-            <h2 className="mt-2 text-2xl font-black">Review items</h2>
-          </div>
-
-          <div className="space-y-3 text-sm">
-            {items.map((item) => {
-              const itemTotal =
-                item.line_total ?? Number(item.variant?.price || 0) * item.quantity;
-
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-start justify-between gap-3 rounded-2xl border border-emerald-100 p-3"
-                >
-                  <div>
-                    <p className="font-bold">{item.product.title}</p>
-                    <p className="subtle">
-                      Qty {item.quantity}
-                      {item.variant?.name ? ` • ${item.variant.name}` : ''}
+                    <p className="mt-2 text-xs text-gray-500">
+                      Use the number that will receive and approve the MTN prompt.
                     </p>
                   </div>
-                  <p className="font-bold">{formatCurrency(itemTotal)}</p>
+                ) : null}
+              </div>
+            </div>
+
+            <aside className="lg:sticky lg:top-24 lg:self-start">
+              <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Review
+                </p>
+                <h2 className="mt-1 text-2xl font-extrabold text-gray-900">
+                  Order summary
+                </h2>
+                <p className="mt-2 text-sm text-gray-500">
+                  Confirm your items and total before placing the order.
+                </p>
+
+                <div className="mt-5 space-y-4">
+                  {items.map((item) => {
+                    const itemTotal =
+                      item.line_total ?? Number(item.variant?.price || 0) * item.quantity;
+
+                    const title = getItemTitle(item);
+                    const variantLabel = getVariantLabel(item);
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-3xl border border-gray-200 bg-gray-50 p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-extrabold text-gray-900">
+                              {title}
+                            </p>
+
+                            {variantLabel ? (
+                              <p className="mt-1 text-xs text-gray-500">
+                                {variantLabel}
+                              </p>
+                            ) : null}
+
+                            <p className="mt-1 text-xs font-medium text-gray-500">
+                              Qty {item.quantity}
+                            </p>
+                          </div>
+
+                          <p className="whitespace-nowrap text-sm font-bold text-gray-900">
+                            {formatCurrency(itemTotal)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {!items.length ? (
+                    <p className="text-sm text-gray-500">Your cart is empty.</p>
+                  ) : null}
                 </div>
-              );
-            })}
 
-            {!items.length ? (
-              <p className="subtle">Your cart is empty.</p>
-            ) : null}
+                <div className="mt-5 space-y-3 border-t border-gray-200 pt-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Items</span>
+                    <span className="font-bold text-gray-900">{itemCount}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Delivery address</span>
+                    <span className="max-w-[180px] truncate text-right font-bold text-gray-900">
+                      {selectedAddress?.label || selectedAddress?.city || 'Not selected'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Payment</span>
+                    <span className="font-bold text-gray-900">
+                      {paymentProvider === 'CASH'
+                        ? 'Pay on Delivery'
+                        : paymentProvider === 'MTN'
+                        ? 'MTN Mobile Money'
+                        : 'Airtel Money'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 border-t border-gray-200 pt-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-500">Total</span>
+                    <span className="text-2xl font-extrabold text-gray-900">
+                      {formatCurrency(total)}
+                    </span>
+                  </div>
+                </div>
+
+                {message ? (
+                  <div
+                    className={`mt-4 rounded-2xl px-4 py-3 text-sm font-semibold ${
+                      messageTone === 'success'
+                        ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : messageTone === 'error'
+                        ? 'border border-red-200 bg-red-50 text-red-600'
+                        : 'border border-gray-200 bg-gray-50 text-gray-600'
+                    }`}
+                  >
+                    {message}
+                  </div>
+                ) : null}
+
+                <button
+                  onClick={onPlaceOrder}
+                  disabled={isPlaceOrderDisabled}
+                  className="mt-5 inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {(loading || pollingPayment) && (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  )}
+
+                  <span>
+                    {loading
+                      ? paymentProvider === 'MTN'
+                        ? 'Starting payment...'
+                        : 'Placing order...'
+                      : pollingPayment
+                      ? 'Waiting for payment approval...'
+                      : 'Place order'}
+                  </span>
+                </button>
+              </div>
+            </aside>
           </div>
-
-          <div className="flex items-center justify-between rounded-2xl bg-emerald-50 px-4 py-3">
-            <span className="font-semibold">Total</span>
-            <span className="text-2xl font-black">{formatCurrency(total)}</span>
-          </div>
-
-          {message ? (
-            <p
-              className={`text-sm font-medium ${
-                messageTone === 'success'
-                  ? 'text-emerald-700'
-                  : messageTone === 'error'
-                  ? 'text-red-600'
-                  : 'text-slate-600'
-              }`}
-            >
-              {message}
-            </p>
-          ) : null}
-
-          <button
-            onClick={onPlaceOrder}
-            disabled={isPlaceOrderDisabled}
-            className="btn btn-accent w-full disabled:opacity-60"
-          >
-            {loading
-              ? paymentProvider === 'MTN'
-                ? 'Starting payment...'
-                : 'Placing order...'
-              : pollingPayment
-              ? 'Waiting for payment approval...'
-              : 'Place order'}
-          </button>
-        </div>
-      </div>
+        </section>
+      </main>
 
       <AddressModal
         open={addressModalVisible}

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useCallback, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Headphones,
@@ -22,6 +22,7 @@ import { useAuthStore } from '@/lib/stores/auth-store';
 import { useTenant } from '@/app/providers/TenantProvider';
 import { getBrandPalette } from '@/lib/tenant/theme';
 import { cartApi, orderApi } from '@/lib/api/services';
+import { CART_UPDATED_EVENT } from '@/lib/cart-events';
 
 type NavLinkItem = {
   href: string;
@@ -139,6 +140,7 @@ export function Header() {
   const [search, setSearch] = useState('');
   const [cartCount, setCartCount] = useState(0);
   const [ordersCount, setOrdersCount] = useState(0);
+  const [loadingCounts, setLoadingCounts] = useState(false);
 
   const appName = tenant?.branding?.app_name || 'GoCart';
   const slogan = 'Shop • Sell • Deliver';
@@ -156,59 +158,70 @@ export function Header() {
     []
   );
 
+  const isActive = useCallback(
+    (href: string) => pathname === href || pathname.startsWith(`${href}/`),
+    [pathname]
+  );
+
+  const visibleNavLinks = useMemo(
+    () =>
+      navLinks.filter((link) => {
+        if (link.authOnly && !isAuthenticated) return false;
+        return true;
+      }),
+    [navLinks, isAuthenticated]
+  );
+
+  const loadCounts = useCallback(async () => {
+    try {
+      setLoadingCounts(true);
+
+      const items = await cartApi.listItems();
+      const nextCartCount = items.reduce(
+        (sum, item) => sum + Number(item.quantity || 0),
+        0
+      );
+      setCartCount(nextCartCount);
+
+      if (!user) {
+        setOrdersCount(0);
+        return;
+      }
+
+      const orders = await orderApi.list();
+      setOrdersCount(orders.length);
+    } catch (error) {
+      console.error('Failed to load header counts:', error);
+      setCartCount(0);
+      setOrdersCount(0);
+    } finally {
+      setLoadingCounts(false);
+    }
+  }, [user]);
+
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
   useEffect(() => {
-    let active = true;
+    loadCounts();
+  }, [loadCounts, pathname]);
 
-    async function loadCounts() {
-      try {
-        const items = await cartApi.listItems();
-        const nextCartCount = items.reduce(
-          (sum, item) => sum + Number(item.quantity || 0),
-          0
-        );
+  useEffect(() => {
+    const handleCartUpdated = () => {
+      loadCounts();
+    };
 
-        if (active) {
-          setCartCount(nextCartCount);
-        }
-
-        if (!user) {
-          if (active) {
-            setOrdersCount(0);
-          }
-          return;
-        }
-
-        const orders = await orderApi.list();
-
-        if (active) {
-          setOrdersCount(orders.length);
-        }
-      } catch {
-        if (active) {
-          setCartCount(0);
-          setOrdersCount(0);
-        }
-      }
+    if (typeof window !== 'undefined') {
+      window.addEventListener(CART_UPDATED_EVENT, handleCartUpdated);
     }
 
-    loadCounts();
-
     return () => {
-      active = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener(CART_UPDATED_EVENT, handleCartUpdated);
+      }
     };
-  }, [user]);
-
-  const isActive = (href: string) =>
-    pathname === href || pathname.startsWith(`${href}/`);
-
-  const visibleNavLinks = navLinks.filter((link) => {
-    if (link.authOnly && !isAuthenticated) return false;
-    return true;
-  });
+  }, [loadCounts]);
 
   function handleSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -227,6 +240,8 @@ export function Header() {
   async function handleLogout() {
     await logout();
     setMobileOpen(false);
+    setCartCount(0);
+    setOrdersCount(0);
     router.push('/');
   }
 
@@ -274,7 +289,7 @@ export function Header() {
             <IconAction
               href="/cart"
               icon={ShoppingCart}
-              label="Cart"
+              label={loadingCounts ? 'Loading cart' : 'Cart'}
               count={cartCount}
             />
 
@@ -282,7 +297,7 @@ export function Header() {
               <IconAction
                 href="/account/orders"
                 icon={Receipt}
-                label="Orders"
+                label={loadingCounts ? 'Loading orders' : 'Orders'}
                 count={ordersCount}
               />
             ) : null}

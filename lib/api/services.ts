@@ -1,4 +1,5 @@
 import { api, clearTokens, getAccessToken, getRefreshToken, normalizeList, setTokens } from './client';
+import { notifyCartUpdated } from '@/lib/cart-events';
 import type {
   Address,
   AddressPayload,
@@ -32,6 +33,26 @@ import type {
   WishlistItem,
 } from '@/lib/types';
 
+export type PaginatedResponse<T> =
+  | T[]
+  | {
+      count: number;
+      next: string | null;
+      previous: string | null;
+      results: T[];
+    };
+
+export function isPaginatedResponse<T>(
+  data: PaginatedResponse<T>
+): data is {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+} {
+  return !Array.isArray(data) && Array.isArray(data.results);
+}
+
 type ProductQueryParams = {
   category?: string | number;
   is_featured?: boolean;
@@ -50,6 +71,30 @@ type RatingQueryParams = {
 
 type ReviewOrParams = number | ReviewQueryParams;
 type RatingOrParams = number | RatingQueryParams;
+
+const getErrorMessage = (error: any, fallback: string) => {
+  const data = error?.response?.data;
+
+  if (typeof data?.detail === 'string') return data.detail;
+
+  if (Array.isArray(data?.non_field_errors) && data.non_field_errors[0]) {
+    return data.non_field_errors[0];
+  }
+
+  if (data && typeof data === 'object') {
+    const firstValue = Object.values(data)[0];
+
+    if (Array.isArray(firstValue) && firstValue[0]) {
+      return String(firstValue[0]);
+    }
+
+    if (typeof firstValue === 'string') {
+      return firstValue;
+    }
+  }
+
+  return fallback;
+};
 
 export const authApi = {
   register: async (payload: {
@@ -106,7 +151,6 @@ export const authApi = {
     return data;
   },
 
-
   changePassword: async (payload: {
     current_password: string;
     new_password: string;
@@ -140,7 +184,7 @@ export const authApi = {
     const { data } = await api.post('/auth/verify-email/', { code });
     return data;
   },
-  
+
   logout: async () => {
     const refresh = getRefreshToken();
     try {
@@ -217,38 +261,71 @@ export const commonApi = {
   },
 };
 
+
 export const cartApi = {
-  getOrCreate: async () => (await api.post<Cart>('/carts/', {})).data,
-
-  listItems: async () =>
-    normalizeList(
-      (await api.get<CartItem[] | { results: CartItem[] }>('/cart-items/')).data
-    ),
-
-  addItem: async (payload: { variant_id: number; quantity: number }) => {
+  async ensure() {
     try {
-      return (await api.post<CartItem>('/cart-items/', payload)).data;
-    } catch (error) {
-      console.error('cartApi.addItem failed:', error);
-      throw error;
+      const { data } = await api.post<Cart>('/carts/', {});
+      return data;
+    } catch {
+      const { data } = await api.get<Cart[] | { results: Cart[] }>('/carts/');
+      return normalizeList(data)[0];
     }
   },
 
-  updateItem: async (id: number, payload: { quantity: number }) => {
+  async listItems() {
     try {
-      return (await api.patch<CartItem>(`/cart-items/${id}/`, payload)).data;
-    } catch (error) {
-      console.error('cartApi.updateItem failed:', error);
-      throw error;
+      const { data } = await api.get<CartItem[] | { results: CartItem[] }>(
+        '/cart-items/'
+      );
+      return normalizeList(data);
+    } catch (error: any) {
+      console.log('GET /cart-items/ error:', error?.response?.data || error.message);
+      throw new Error(
+        error?.response?.data?.detail || 'Failed to load cart items.'
+      );
     }
   },
 
-  removeItem: async (id: number) => {
+  async addItem(payload: { variant_id: number; quantity: number }) {
     try {
-      return (await api.delete(`/cart-items/${id}/`)).data;
-    } catch (error) {
-      console.error('cartApi.removeItem failed:', error);
-      throw error;
+      const { data } = await api.post<CartItem>('/cart-items/', payload);
+      notifyCartUpdated();
+      return data;
+    } catch (error: any) {
+      console.log('POST /cart-items/ error:', error?.response?.data || error.message);
+      throw new Error(getErrorMessage(error, 'Failed to add item to cart.'));
+    }
+  },
+
+  async updateItem(
+    id: number,
+    payload: { quantity?: number; variant_id?: number }
+  ) {
+    try {
+      const { data } = await api.patch<CartItem>(`/cart-items/${id}/`, payload);
+      notifyCartUpdated();
+      return data;
+    } catch (error: any) {
+      console.log(
+        `PATCH /cart-items/${id}/ error:`,
+        error?.response?.data || error.message
+      );
+      throw new Error(getErrorMessage(error, 'Failed to update cart item.'));
+    }
+  },
+
+  async removeItem(id: number) {
+    try {
+      await api.delete(`/cart-items/${id}/`);
+      notifyCartUpdated();
+      return { success: true };
+    } catch (error: any) {
+      console.log(
+        `DELETE /cart-items/${id}/ error:`,
+        error?.response?.data || error.message
+      );
+      throw new Error(getErrorMessage(error, 'Failed to remove cart item.'));
     }
   },
 };
@@ -369,10 +446,11 @@ export const wishlistApi = {
   },
 };
 
-
 export const orderApi = {
   list: async () =>
-    normalizeList((await api.get<Order[] | { results: Order[] }>('/orders/')).data),
+    normalizeList(
+      (await api.get<Order[] | { results: Order[] }>('/orders/')).data
+    ),
 
   detail: async (slug: string) =>
     (await api.get<Order>(`/orders/${slug}/`)).data,
@@ -384,63 +462,67 @@ export const orderApi = {
     coupon_code?: string;
   }) => (await api.post<Order>('/orders/checkout/', payload)).data,
 
-  create: async (payload: {
-    address_id?: number;
-    payment_method?: string;
-    shipping_method_id?: number;
-    coupon_code?: string;
-  }) =>
-    (
-      await api.post<Order>('/orders/checkout/', {
-        address_id: payload.address_id ?? 1,
-        payment_method: payload.payment_method,
-        shipping_method_id: payload.shipping_method_id,
-        coupon_code: payload.coupon_code,
-      })
-    ).data,
-
   update: async (slug: string, payload: Record<string, unknown>) =>
     (await api.patch<Order>(`/orders/${slug}/`, payload)).data,
 
   removeItem: async (id: number) => api.delete(`/orders/${id}/`),
-
-  addItem: async (payload: {
-    address_id?: number;
-    payment_method?: string;
-    shipping_method_id?: number;
-    coupon_code?: string;
-  }) =>
-    (
-      await api.post<Order>('/orders/checkout/', {
-        address_id: payload.address_id ?? 1,
-        payment_method: payload.payment_method,
-        shipping_method_id: payload.shipping_method_id,
-        coupon_code: payload.coupon_code,
-      })
-    ).data,
 };
 
 export const notificationApi = {
-  list: async () =>
-    normalizeList(
-      (await api.get<Notification[] | { results: Notification[] }>('/notifications/')).data
-    ),
+  async list(url?: string): Promise<PaginatedResponse<Notification>> {
+    try {
+      const endpoint = url ?? '/notifications/';
+      const { data } = await api.get<PaginatedResponse<Notification>>(endpoint);
 
-  markRead: async (id: number) =>
-    (await api.post<Notification>(`/notifications/${id}/mark-read/`)).data,
+      if (Array.isArray(data)) {
+        return data;
+      }
 
-  markAllRead: async () => {
-    const items = normalizeList(
-      (await api.get<Notification[] | { results: Notification[] }>('/notifications/')).data
-    );
+      if (isPaginatedResponse<Notification>(data)) {
+        return data;
+      }
 
-    await Promise.all(
-      items
-        .filter((n) => !(n as any).is_read)
-        .map((n) => api.post(`/notifications/${(n as any).id}/mark-read/`))
-    );
+      return {
+        count: 0,
+        next: null,
+        previous: null,
+        results: [],
+      };
+    } catch (error: any) {
+      console.log(
+        `GET ${url ?? '/notifications/'} error:`,
+        error?.response?.data || error.message
+      );
+      throw error;
+    }
+  },
 
-    return true;
+  async markRead(id: number): Promise<Notification> {
+    try {
+      const { data } = await api.post<Notification>(
+        `/notifications/${id}/mark_read/`
+      );
+      return data;
+    } catch (error: any) {
+      console.log(
+        `POST /notifications/${id}/mark_read/ error:`,
+        error?.response?.data || error.message
+      );
+      throw error;
+    }
+  },
+
+  async markAllRead() {
+    try {
+      const { data } = await api.post('/notifications/mark_all_read/');
+      return data;
+    } catch (error: any) {
+      console.log(
+        'POST /notifications/mark_all_read/ error:',
+        error?.response?.data || error.message
+      );
+      throw error;
+    }
   },
 };
 
@@ -476,23 +558,120 @@ export const addressApi = {
     (await api.delete(`/addresses/${id}/`)).data,
 };
 
-export const paymentApi = {
-  list: async () =>
-    normalizeList((await api.get<Payment[] | { results: Payment[] }>('/payments/')).data),
+const getApiErrorMessage = (error: any, fallback: string) => {
+  const data = error?.response?.data;
 
-  create: async (payload: PaymentPayload) =>
-    (await api.post<Payment>('/payments/', payload)).data,
+  if (!data) return fallback;
+
+  // standard DRF
+  if (typeof data.detail === 'string') return data.detail;
+
+  // custom message
+  if (typeof data.message === 'string') return data.message;
+
+  // non-field errors
+  if (Array.isArray(data.non_field_errors) && data.non_field_errors[0]) {
+    return data.non_field_errors[0];
+  }
+
+  // field errors (e.g. address_id, phone_number)
+  const firstKey = Object.keys(data)[0];
+  if (firstKey && Array.isArray(data[firstKey])) {
+    return data[firstKey][0];
+  }
+
+  // fallback to stringified response (useful for MTN debug)
+  if (typeof data === 'object') {
+    return JSON.stringify(data);
+  }
+
+  return fallback;
+};
+
+export const paymentApi = {
+  list: async () => {
+    try {
+      return normalizeList(
+        (await api.get<Payment[] | { results: Payment[] }>('/payments/')).data
+      );
+    } catch (error: any) {
+      console.log('GET /payments/ error:', error?.response?.data || error.message);
+      throw new Error(getApiErrorMessage(error, 'Failed to load payments.'));
+    }
+  },
+
+  create: async (payload: PaymentPayload) => {
+    try {
+      return (await api.post<Payment>('/payments/', payload)).data;
+    } catch (error: any) {
+      console.log('POST /payments/ error:', error?.response?.data || error.message);
+      throw new Error(getApiErrorMessage(error, 'Failed to create payment.'));
+    }
+  },
 
   initiateMTN: async (payload: {
-    address_id: number;
+    address_id?: number;
+    order?: number;
     phone_number: string;
-  }) => (await api.post('/payments/mtn/initiate/', payload)).data,
+  }) => {
+    try {
+      return (await api.post('/payments/mtn/initiate/', payload)).data;
+    } catch (error: any) {
+      console.log(
+        'POST /payments/mtn/initiate/ error:',
+        error?.response?.data || error.message
+      );
 
-  checkStatus: async (reference: string) =>
-    (await api.get(`/payments/status/${reference}/`)).data,
+      throw new Error(
+        getApiErrorMessage(
+          error,
+          'Failed to start MTN payment. Please check your number and try again.'
+        )
+      );
+    }
+  },
 
-  finalizeOrder: async (reference: string) =>
-    (await api.post(`/payments/finalize/${reference}/`)).data,
+  checkStatus: async (reference: string) => {
+    try {
+      return (await api.get(`/payments/${reference}/status/`)).data;
+    } catch (error: any) {
+      console.log(
+        `GET /payments/${reference}/status/ error:`,
+        error?.response?.data || error.message
+      );
+
+      throw new Error(
+        getApiErrorMessage(
+          error,
+          'Failed to check payment status. Please try again.'
+        )
+      );
+    }
+  },
+
+  finalizeOrder: async (reference: string) => {
+    try {
+      return (await api.post(`/payments/${reference}/finalize-order/`)).data;
+    } catch (error: any) {
+      console.log(
+        `POST /payments/${reference}/finalize-order/ error:`,
+        error?.response?.data || error.message
+      );
+
+      // special handling for MTN async delay
+      const message = getApiErrorMessage(error, '');
+
+      if (message.toLowerCase().includes('still being confirmed')) {
+        throw new Error(
+          'Payment is still being confirmed. Please wait a few seconds and try again.'
+        );
+      }
+
+      throw new Error(
+        message || 'Failed to finalize paid order.'
+      );
+    }
+  },
 };
 
 export const shippingApi = {
@@ -779,7 +958,7 @@ export const adminApi = {
     (await api.delete(`/notifications/${id}/`)).data,
 
   markNotificationRead: async (id: number) =>
-    (await api.post<Notification>(`/notifications/${id}/mark-read/`)).data,
+    (await api.post<Notification>(`/notifications/${id}/mark_read/`)).data,
 
   createInventory: async (payload: Record<string, unknown>) =>
     (await api.post<Inventory>('/inventory/', payload)).data,
