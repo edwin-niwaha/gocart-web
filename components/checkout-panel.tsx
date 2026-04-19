@@ -1,7 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import {
+  ChevronDown,
+  CreditCard,
+  Landmark,
+  ShieldCheck,
+  Smartphone,
+  Wallet,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
   addressApi,
@@ -13,7 +20,13 @@ import { notifyCartUpdated } from '@/lib/cart-events';
 import type { Address, CartItem } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 
-type PaymentProvider = 'CASH' | 'MTN' | 'AIRTEL';
+type PaymentProvider =
+  | 'CASH'
+  | 'STRIPE'
+  | 'PAYSTACK'
+  | 'FLUTTERWAVE'
+  | 'MTN'
+  | 'AIRTEL';
 
 type AddressFormValues = {
   label: string;
@@ -54,8 +67,8 @@ const PAYMENT_OPTIONS: ReadonlyArray<{
   disabled?: boolean;
 }> = [
   {
-    label: 'Pay on Delivery',
-    subtitle: 'Cash or Mobile Money on arrival',
+    label: 'Cash on Delivery',
+    subtitle: 'Pay when your order arrives',
     value: 'CASH',
   },
   {
@@ -65,8 +78,26 @@ const PAYMENT_OPTIONS: ReadonlyArray<{
   },
   {
     label: 'Airtel Money',
-    subtitle: 'Coming soon',
+    subtitle: 'Pay instantly with Airtel Money',
     value: 'AIRTEL',
+    disabled: true,
+  },
+  {
+    label: 'Stripe',
+    subtitle: 'Cards and international payments',
+    value: 'STRIPE',
+    disabled: true,
+  },
+  {
+    label: 'Paystack',
+    subtitle: 'Cards, bank and wallet payments',
+    value: 'PAYSTACK',
+    disabled: true,
+  },
+  {
+    label: 'Flutterwave',
+    subtitle: 'Cards, bank transfer and more',
+    value: 'FLUTTERWAVE',
     disabled: true,
   },
 ];
@@ -84,7 +115,10 @@ const normalizeUgPhone = (value: string) => {
   return raw;
 };
 
-const isValidUgPhone = (value: string) => /^\+2567\d{8}$/.test(value);
+const isValidUgPhone = (value: string) => /^\+256\d{9}$/.test(value);
+
+const isValidMtnUgPhone = (value: string) =>
+  /^\+256(76|77|78|79)\d{7}$/.test(value);
 
 function AddressModal({
   open,
@@ -244,6 +278,7 @@ export function CheckoutPanel() {
 
   const [paymentProvider, setPaymentProvider] =
     useState<PaymentProvider>('CASH');
+  const [paymentMenuOpen, setPaymentMenuOpen] = useState(false);
   const [mtnPhone, setMtnPhone] = useState('');
 
   const [loading, setLoading] = useState(false);
@@ -299,12 +334,24 @@ export function CheckoutPanel() {
     }
   }, [paymentProvider, mtnPhone]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('[data-payment-dropdown]')) {
+        setPaymentMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const total = useMemo(() => {
     return items.reduce((sum, item) => {
       const lineTotal =
         item.line_total != null
           ? Number(item.line_total)
-          : Number(item.variant?.price || 0) * item.quantity;
+          : Number((item as any).variant?.price || 0) * item.quantity;
       return sum + lineTotal;
     }, 0);
   }, [items]);
@@ -316,6 +363,10 @@ export function CheckoutPanel() {
   const selectedAddress = useMemo(() => {
     return addresses.find((item) => item.id === selectedAddressId) ?? null;
   }, [addresses, selectedAddressId]);
+
+  const selectedPaymentOption =
+    PAYMENT_OPTIONS.find((option) => option.value === paymentProvider) ??
+    PAYMENT_OPTIONS[0];
 
   const isBusy = loading || pollingPayment;
   const isPlaceOrderDisabled = !items.length || !selectedAddressId || isBusy;
@@ -488,6 +539,11 @@ export function CheckoutPanel() {
       return;
     }
 
+    if (!isValidMtnUgPhone(normalizedPhone)) {
+      setFeedback('Please enter a valid MTN Mobile Money number.', 'error');
+      return;
+    }
+
     const payment = await paymentApi.initiateMTN({
       address_id: selectedAddressId,
       phone_number: normalizedPhone,
@@ -525,6 +581,15 @@ export function CheckoutPanel() {
 
     if (paymentProvider === 'AIRTEL') {
       setFeedback('Airtel Money is not enabled yet.', 'info');
+      return;
+    }
+
+    if (
+      paymentProvider === 'STRIPE' ||
+      paymentProvider === 'PAYSTACK' ||
+      paymentProvider === 'FLUTTERWAVE'
+    ) {
+      setFeedback(`${paymentProvider} is not enabled yet.`, 'info');
       return;
     }
 
@@ -572,6 +637,44 @@ export function CheckoutPanel() {
       (item as any).variant?.sku ??
       ''
     );
+  };
+
+  const getPaymentLabel = (provider: PaymentProvider) => {
+    switch (provider) {
+      case 'CASH':
+        return 'Cash on Delivery';
+      case 'MTN':
+        return 'MTN Mobile Money';
+      case 'AIRTEL':
+        return 'Airtel Money';
+      case 'STRIPE':
+        return 'Stripe';
+      case 'PAYSTACK':
+        return 'Paystack';
+      case 'FLUTTERWAVE':
+        return 'Flutterwave';
+      default:
+        return provider;
+    }
+  };
+
+  const getPaymentIcon = (provider: PaymentProvider) => {
+    switch (provider) {
+      case 'CASH':
+        return <Wallet className="h-5 w-5" />;
+      case 'MTN':
+        return <Smartphone className="h-5 w-5" />;
+      case 'AIRTEL':
+        return <Smartphone className="h-5 w-5" />;
+      case 'STRIPE':
+        return <CreditCard className="h-5 w-5" />;
+      case 'PAYSTACK':
+        return <Landmark className="h-5 w-5" />;
+      case 'FLUTTERWAVE':
+        return <CreditCard className="h-5 w-5" />;
+      default:
+        return <Wallet className="h-5 w-5" />;
+    }
   };
 
   return (
@@ -716,78 +819,131 @@ export function CheckoutPanel() {
               <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
                 <div className="mb-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Payment
+                    Payment method
                   </p>
-                  <h2 className="mt-1 text-xl font-extrabold text-gray-900">
-                    Choose how to pay
+                  <h2 className="mt-1 text-2xl font-extrabold text-gray-900">
+                    Choose how you want to pay
                   </h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Select your preferred payment method.
+                  <p className="mt-2 text-sm text-gray-500">
+                    Select your preferred payment option to complete this order.
                   </p>
                 </div>
 
-                <div className="space-y-3">
-                  {PAYMENT_OPTIONS.map((option) => {
-                    const selected = paymentProvider === option.value;
+                <div className="relative" data-payment-dropdown>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMenuOpen((prev) => !prev)}
+                    className="flex w-full items-center justify-between rounded-3xl border border-gray-200 bg-white px-4 py-4 text-left shadow-sm transition hover:border-gray-300"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                        {getPaymentIcon(paymentProvider)}
+                      </div>
 
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => {
-                          if (option.disabled) {
-                            setFeedback('Airtel Money is coming soon.', 'info');
-                            return;
-                          }
-                          setPaymentProvider(option.value);
-                        }}
-                        className={`w-full rounded-3xl border p-4 text-left transition ${
-                          selected
-                            ? 'border-emerald-600 bg-emerald-50'
-                            : 'border-gray-200 bg-gray-50'
-                        } ${option.disabled ? 'opacity-70' : ''}`}
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <p
-                              className={`font-extrabold ${
-                                selected ? 'text-emerald-700' : 'text-gray-900'
-                              }`}
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Selected payment
+                        </p>
+                        <p className="truncate text-sm font-extrabold text-gray-900">
+                          {selectedPaymentOption.label}
+                        </p>
+                        <p className="truncate text-xs text-gray-500">
+                          {selectedPaymentOption.subtitle}
+                        </p>
+                      </div>
+                    </div>
+
+                    <ChevronDown
+                      className={`h-5 w-5 shrink-0 text-gray-500 transition ${
+                        paymentMenuOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {paymentMenuOpen ? (
+                    <div className="absolute z-20 mt-3 w-full rounded-3xl border border-gray-200 bg-white p-3 shadow-2xl">
+                      <div className="space-y-2">
+                        {PAYMENT_OPTIONS.map((option) => {
+                          const selected = paymentProvider === option.value;
+
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() => {
+                                if (option.disabled) {
+                                  setFeedback(`${option.label} is coming soon.`, 'info');
+                                  return;
+                                }
+
+                                setPaymentProvider(option.value);
+                                setPaymentMenuOpen(false);
+                              }}
+                              className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                                selected
+                                  ? 'border-emerald-600 bg-emerald-50'
+                                  : 'border-gray-200 bg-white hover:bg-gray-50'
+                              } ${option.disabled ? 'opacity-60' : ''}`}
                             >
-                              {option.label}
-                            </p>
-                            <p className="mt-1 text-sm text-gray-500">
-                              {option.subtitle}
-                            </p>
-                          </div>
+                              <div
+                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+                                  selected
+                                    ? 'bg-white text-emerald-700'
+                                    : 'bg-gray-100 text-gray-600'
+                                }`}
+                              >
+                                {getPaymentIcon(option.value)}
+                              </div>
 
-                          <div
-                            className={`mt-1 h-5 w-5 rounded-full border-2 ${
-                              selected
-                                ? 'border-emerald-600 bg-emerald-600'
-                                : 'border-gray-300'
-                            }`}
-                          />
-                        </div>
-                      </button>
-                    );
-                  })}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p
+                                    className={`text-sm font-extrabold ${
+                                      selected ? 'text-emerald-700' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    {option.label}
+                                  </p>
+
+                                  {option.disabled ? (
+                                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                                      Coming soon
+                                    </span>
+                                  ) : null}
+
+                                  {selected ? (
+                                    <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                      Selected
+                                    </span>
+                                  ) : null}
+                                </div>
+
+                                <p className="mt-1 text-xs text-gray-500">
+                                  {option.subtitle}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {paymentProvider === 'MTN' ? (
-                  <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="mt-4 rounded-3xl border border-amber-200 bg-amber-50 p-4">
                     <label className="text-sm font-bold text-gray-800">
-                      MTN phone number
+                      MTN Mobile Money number
                     </label>
                     <input
                       className="input mt-2"
-                      placeholder="078XXXXXXX or +25678XXXXXXX"
+                      placeholder="e.g. 0772123456 or +256772123456"
                       value={mtnPhone}
                       onChange={(e) => setMtnPhone(e.target.value)}
                       disabled={isBusy}
                     />
-                    <p className="mt-2 text-xs text-gray-500">
-                      Use the number that will receive and approve the MTN prompt.
+                    <p className="mt-2 text-xs text-amber-700">
+                      This must be an MTN number that can receive and approve the payment prompt.
                     </p>
                   </div>
                 ) : null}
@@ -809,7 +965,7 @@ export function CheckoutPanel() {
                 <div className="mt-5 space-y-4">
                   {items.map((item) => {
                     const itemTotal =
-                      item.line_total ?? Number(item.variant?.price || 0) * item.quantity;
+                      item.line_total ?? Number((item as any).variant?.price || 0) * item.quantity;
 
                     const title = getItemTitle(item);
                     const variantLabel = getVariantLabel(item);
@@ -865,11 +1021,7 @@ export function CheckoutPanel() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500">Payment</span>
                     <span className="font-bold text-gray-900">
-                      {paymentProvider === 'CASH'
-                        ? 'Pay on Delivery'
-                        : paymentProvider === 'MTN'
-                        ? 'MTN Mobile Money'
-                        : 'Airtel Money'}
+                      {getPaymentLabel(paymentProvider)}
                     </span>
                   </div>
                 </div>

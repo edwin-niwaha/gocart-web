@@ -527,6 +527,13 @@ export const wishlistApi = {
  * Orders
  * ========================================================================== */
 
+export type CheckoutResponse = {
+  order: Order;
+  payment_reference: string | null;
+  payment_status?: string | null;
+  payment_provider?: string | null;
+};
+
 export const orderApi = {
   list: async () =>
     getList<Order>('/orders/'),
@@ -539,7 +546,7 @@ export const orderApi = {
     payment_method?: string;
     shipping_method_id?: number;
     coupon_code?: string;
-  }) => postOne<Order>('/orders/checkout/', payload),
+  }) => postOne<CheckoutResponse>('/orders/checkout/', payload),
 
   update: async (slug: string, payload: Record<string, unknown>) =>
     patchOne<Order>(`/orders/${slug}/`, payload),

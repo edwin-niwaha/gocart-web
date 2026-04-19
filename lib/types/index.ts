@@ -273,11 +273,12 @@ export type PaymentStatus =
   | 'CANCELLED';
 
 export type PaymentProvider =
-  | 'MTN'
-  | 'AIRTEL'
-  | 'CARD'
   | 'CASH'
-  | 'BANK';
+  | 'STRIPE'
+  | 'PAYSTACK'
+  | 'FLUTTERWAVE'
+  | 'MTN'
+  | 'AIRTEL';
 
 export type Payment = {
   id: number;
