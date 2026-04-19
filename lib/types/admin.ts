@@ -18,7 +18,7 @@ export type SelectOption = {
 export interface ResourceField {
   name: string;
   label: string;
-  type: ResourceFieldType | string;
+  type: ResourceFieldType;
   required?: boolean;
   placeholder?: string;
   helpText?: string;

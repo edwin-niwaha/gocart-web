@@ -1,4 +1,11 @@
-import { api, clearTokens, getAccessToken, getRefreshToken, normalizeList, setTokens } from './client';
+import {
+  api,
+  clearTokens,
+  getAccessToken,
+  getRefreshToken,
+  normalizeList,
+  setTokens,
+} from './client';
 import { notifyCartUpdated } from '@/lib/cart-events';
 import type {
   Address,
@@ -14,7 +21,7 @@ import type {
   Notification,
   Order,
   OrderItem,
-  Payment,
+  Payment as BasePayment,
   PaymentPayload,
   Product,
   ProductRating,
@@ -33,6 +40,10 @@ import type {
   WishlistItem,
 } from '@/lib/types';
 
+/* ============================================================================
+ * Shared types
+ * ========================================================================== */
+
 export type PaginatedResponse<T> =
   | T[]
   | {
@@ -41,6 +52,8 @@ export type PaginatedResponse<T> =
       previous: string | null;
       results: T[];
     };
+
+export type ListResponse<T> = T[] | { results: T[] };
 
 export function isPaginatedResponse<T>(
   data: PaginatedResponse<T>
@@ -52,6 +65,74 @@ export function isPaginatedResponse<T>(
 } {
   return !Array.isArray(data) && Array.isArray(data.results);
 }
+
+function compactObject<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => value !== undefined)
+  ) as Partial<T>;
+}
+
+function getApiErrorMessage(error: any, fallback: string): string {
+  const data = error?.response?.data;
+
+  if (!data) return fallback;
+
+  if (typeof data.detail === 'string') return data.detail;
+  if (typeof data.message === 'string') return data.message;
+
+  if (Array.isArray(data.non_field_errors) && data.non_field_errors[0]) {
+    return String(data.non_field_errors[0]);
+  }
+
+  if (data && typeof data === 'object') {
+    const firstValue = Object.values(data)[0];
+
+    if (Array.isArray(firstValue) && firstValue[0]) {
+      return String(firstValue[0]);
+    }
+
+    if (typeof firstValue === 'string') {
+      return firstValue;
+    }
+
+    try {
+      return JSON.stringify(data);
+    } catch {
+      return fallback;
+    }
+  }
+
+  return fallback;
+}
+
+async function getList<T>(url: string, params?: Record<string, unknown>): Promise<T[]> {
+  const { data } = await api.get<ListResponse<T>>(url, { params });
+  return normalizeList(data);
+}
+
+async function getOne<T>(url: string): Promise<T> {
+  const { data } = await api.get<T>(url);
+  return data;
+}
+
+async function postOne<T>(url: string, payload?: unknown): Promise<T> {
+  const { data } = await api.post<T>(url, payload);
+  return data;
+}
+
+async function patchOne<T>(url: string, payload?: unknown): Promise<T> {
+  const { data } = await api.patch<T>(url, payload);
+  return data;
+}
+
+async function deleteOne<T = unknown>(url: string): Promise<T> {
+  const { data } = await api.delete<T>(url);
+  return data;
+}
+
+/* ============================================================================
+ * Query / domain types
+ * ========================================================================== */
 
 type ProductQueryParams = {
   category?: string | number;
@@ -72,29 +153,60 @@ type RatingQueryParams = {
 type ReviewOrParams = number | ReviewQueryParams;
 type RatingOrParams = number | RatingQueryParams;
 
-const getErrorMessage = (error: any, fallback: string) => {
-  const data = error?.response?.data;
+export const PAYMENT_STATUSES = [
+  'PENDING',
+  'PROCESSING',
+  'PAID',
+  'FAILED',
+  'REFUNDED',
+  'CANCELLED',
+] as const;
 
-  if (typeof data?.detail === 'string') return data.detail;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
-  if (Array.isArray(data?.non_field_errors) && data.non_field_errors[0]) {
-    return data.non_field_errors[0];
-  }
+export const PAYMENT_PROVIDERS = [
+  'CASH',
+  'STRIPE',
+  'PAYSTACK',
+  'FLUTTERWAVE',
+  'MTN',
+  'AIRTEL',
+] as const;
 
-  if (data && typeof data === 'object') {
-    const firstValue = Object.values(data)[0];
+export type PaymentProvider = (typeof PAYMENT_PROVIDERS)[number];
 
-    if (Array.isArray(firstValue) && firstValue[0]) {
-      return String(firstValue[0]);
-    }
-
-    if (typeof firstValue === 'string') {
-      return firstValue;
-    }
-  }
-
-  return fallback;
+export type Payment = BasePayment & {
+  user_email?: string;
+  username?: string;
+  tenant?: number | null;
+  order_slug?: string | null;
+  order_status?: string | null;
+  address_id?: number | null;
 };
+
+export interface PaymentListParams {
+  status?: PaymentStatus | string;
+  provider?: PaymentProvider | string;
+  search?: string;
+}
+
+export interface UpdatePaymentPayload {
+  provider?: PaymentProvider | string;
+  status?: PaymentStatus | string;
+  transaction_id?: string;
+  provider_response?: Record<string, unknown>;
+}
+
+export type ContactPayload = {
+  name: string;
+  email: string;
+  message: string;
+  subject?: string;
+};
+
+/* ============================================================================
+ * Auth
+ * ========================================================================== */
 
 export const authApi = {
   register: async (payload: {
@@ -103,19 +215,21 @@ export const authApi = {
     password: string;
     password_confirm: string;
   }) => {
-    const { data } = await api.post<AuthResponse>('/auth/register/', payload);
+    const data = await postOne<AuthResponse>('/auth/register/', payload);
     setTokens(data.tokens.access, data.tokens.refresh);
     return data;
   },
 
   login: async (payload: { email: string; password: string }) => {
-    const { data } = await api.post<AuthResponse>('/auth/login/', payload);
+    const data = await postOne<AuthResponse>('/auth/login/', payload);
     setTokens(data.tokens.access, data.tokens.refresh);
     return data;
   },
 
   googleLogin: async (access_token: string) => {
-    const { data } = await api.post<AuthResponse>('/auth/social/google/', { access_token });
+    const data = await postOne<AuthResponse>('/auth/social/google/', {
+      access_token,
+    });
     setTokens(data.tokens.access, data.tokens.refresh);
     return data;
   },
@@ -123,8 +237,7 @@ export const authApi = {
   me: async () => {
     const token = getAccessToken();
     if (!token) throw new Error('No access token found');
-    const { data } = await api.get<User>('/auth/me/');
-    return data;
+    return getOne<User>('/auth/me/');
   },
 
   updateProfile: async (payload: FormData) => {
@@ -155,41 +268,30 @@ export const authApi = {
     current_password: string;
     new_password: string;
     new_password_confirm: string;
-  }) => {
-    const { data } = await api.post('/auth/change-password/', payload);
-    return data;
-  },
+  }) => postOne('/auth/change-password/', payload),
 
-  forgotPassword: async (email: string) => {
-    const { data } = await api.post('/auth/forgot-password/', { email });
-    return data;
-  },
+  forgotPassword: async (email: string) =>
+    postOne('/auth/forgot-password/', { email }),
 
   resetPassword: async (payload: {
     email: string;
     code: string;
     password: string;
     password_confirm: string;
-  }) => {
-    const { data } = await api.post('/auth/reset-password/', payload);
-    return data;
-  },
+  }) => postOne('/auth/reset-password/', payload),
 
-  sendEmailVerification: async () => {
-    const { data } = await api.post('/auth/send-email-verification/');
-    return data;
-  },
+  sendEmailVerification: async () =>
+    postOne('/auth/send-email-verification/'),
 
-  verifyEmail: async (code: string) => {
-    const { data } = await api.post('/auth/verify-email/', { code });
-    return data;
-  },
+  verifyEmail: async (code: string) =>
+    postOne('/auth/verify-email/', { code }),
 
   logout: async () => {
     const refresh = getRefreshToken();
+
     try {
       if (refresh) {
-        await api.post('/auth/logout/', { refresh });
+        await postOne('/auth/logout/', { refresh });
       }
     } finally {
       clearTokens();
@@ -197,26 +299,22 @@ export const authApi = {
   },
 };
 
+/* ============================================================================
+ * Catalog / public
+ * ========================================================================== */
+
 export const catalogApi = {
   products: async (params?: ProductQueryParams) =>
-    normalizeList(
-      (
-        await api.get<Product[] | { results: Product[] }>('/products/', {
-          params,
-        })
-      ).data
-    ),
+    getList<Product>('/products/', params),
 
   product: async (slug: string) =>
-    (await api.get<Product>(`/products/${slug}/`)).data,
+    getOne<Product>(`/products/${slug}/`),
 
   categories: async () =>
-    normalizeList(
-      (await api.get<Category[] | { results: Category[] }>('/categories/')).data
-    ),
+    getList<Category>('/categories/'),
 
   category: async (slug: string) =>
-    (await api.get<Category>(`/categories/${slug}/`)).data,
+    getOne<Category>(`/categories/${slug}/`),
 
   reviews: async (productOrParams?: ReviewOrParams) => {
     const params =
@@ -224,13 +322,7 @@ export const catalogApi = {
         ? { product: productOrParams }
         : productOrParams;
 
-    return normalizeList(
-      (
-        await api.get<Review[] | { results: Review[] }>('/reviews/', {
-          params,
-        })
-      ).data
-    );
+    return getList<Review>('/reviews/', params);
   },
 
   ratings: async (productOrParams?: RatingOrParams) => {
@@ -239,62 +331,54 @@ export const catalogApi = {
         ? { product: productOrParams }
         : productOrParams;
 
-    return normalizeList(
-      (
-        await api.get<ProductRating[] | { results: ProductRating[] }>('/ratings/', {
-          params,
-        })
-      ).data
-    );
+    return getList<ProductRating>('/ratings/', params);
   },
 
   createReview: async (payload: {
     product: number;
     rating: number;
     comment: string;
-  }) => (await api.post<Review>('/reviews/', payload)).data,
+  }) => postOne<Review>('/reviews/', payload),
 };
 
 export const commonApi = {
-  subscribeToNewsletter(payload: { email: string }) {
-    return api.post('/newsletter/', payload);
-  },
+  subscribeToNewsletter: async (payload: { email: string }) =>
+    postOne('/newsletter/', payload),
 };
 
+/* ============================================================================
+ * Cart
+ * ========================================================================== */
 
 export const cartApi = {
   async ensure() {
     try {
-      const { data } = await api.post<Cart>('/carts/', {});
-      return data;
+      return await postOne<Cart>('/carts/', {});
     } catch {
-      const { data } = await api.get<Cart[] | { results: Cart[] }>('/carts/');
-      return normalizeList(data)[0];
+      const carts = await getList<Cart>('/carts/');
+      return carts[0];
     }
   },
 
   async listItems() {
     try {
-      const { data } = await api.get<CartItem[] | { results: CartItem[] }>(
-        '/cart-items/'
-      );
-      return normalizeList(data);
+      return await getList<CartItem>('/cart-items/');
     } catch (error: any) {
       console.log('GET /cart-items/ error:', error?.response?.data || error.message);
       throw new Error(
-        error?.response?.data?.detail || 'Failed to load cart items.'
+        getApiErrorMessage(error, 'Failed to load cart items.')
       );
     }
   },
 
   async addItem(payload: { variant_id: number; quantity: number }) {
     try {
-      const { data } = await api.post<CartItem>('/cart-items/', payload);
+      const data = await postOne<CartItem>('/cart-items/', payload);
       notifyCartUpdated();
       return data;
     } catch (error: any) {
       console.log('POST /cart-items/ error:', error?.response?.data || error.message);
-      throw new Error(getErrorMessage(error, 'Failed to add item to cart.'));
+      throw new Error(getApiErrorMessage(error, 'Failed to add item to cart.'));
     }
   },
 
@@ -303,7 +387,7 @@ export const cartApi = {
     payload: { quantity?: number; variant_id?: number }
   ) {
     try {
-      const { data } = await api.patch<CartItem>(`/cart-items/${id}/`, payload);
+      const data = await patchOne<CartItem>(`/cart-items/${id}/`, payload);
       notifyCartUpdated();
       return data;
     } catch (error: any) {
@@ -311,13 +395,13 @@ export const cartApi = {
         `PATCH /cart-items/${id}/ error:`,
         error?.response?.data || error.message
       );
-      throw new Error(getErrorMessage(error, 'Failed to update cart item.'));
+      throw new Error(getApiErrorMessage(error, 'Failed to update cart item.'));
     }
   },
 
   async removeItem(id: number) {
     try {
-      await api.delete(`/cart-items/${id}/`);
+      await deleteOne(`/cart-items/${id}/`);
       notifyCartUpdated();
       return { success: true };
     } catch (error: any) {
@@ -325,25 +409,26 @@ export const cartApi = {
         `DELETE /cart-items/${id}/ error:`,
         error?.response?.data || error.message
       );
-      throw new Error(getErrorMessage(error, 'Failed to remove cart item.'));
+      throw new Error(getApiErrorMessage(error, 'Failed to remove cart item.'));
     }
   },
 };
 
+/* ============================================================================
+ * Reviews / ratings
+ * ========================================================================== */
+
 export const reviewApi = {
   myReviews: async (params?: { product?: number; product_slug?: string }) => {
-    const response = await api.get('/reviews/', { params });
-    return response.data;
+    const { data } = await api.get('/reviews/', { params });
+    return data;
   },
 
   create: async (payload: {
     product: number;
     rating: number;
     comment: string;
-  }) => {
-    const response = await api.post('/reviews/', payload);
-    return response.data;
-  },
+  }) => postOne('/reviews/', payload),
 
   update: async (
     id: number,
@@ -351,22 +436,15 @@ export const reviewApi = {
       rating: number;
       comment: string;
     }
-  ) => {
-    const response = await api.patch(`/reviews/${id}/`, payload);
-    return response.data;
-  },
+  ) => patchOne(`/reviews/${id}/`, payload),
 
-  remove: async (id: number) => {
-    const response = await api.delete(`/reviews/${id}/`);
-    return response.data;
-  },
+  remove: async (id: number) =>
+    deleteOne(`/reviews/${id}/`),
 
   myReviewForProduct: async (product_slug: string) => {
-    const response = await api.get('/reviews/', {
+    const { data } = await api.get('/reviews/', {
       params: { product_slug },
     });
-
-    const data = response.data;
 
     if (Array.isArray(data)) return data[0] ?? null;
     if (Array.isArray(data?.results)) return data.results[0] ?? null;
@@ -377,11 +455,9 @@ export const reviewApi = {
 
 export const productReviewApi = {
   listBySlug: async (slug: string) => {
-    const response = await api.get('/product-reviews/', {
+    const { data } = await api.get('/product-reviews/', {
       params: { product_slug: slug },
     });
-
-    const data = response.data;
 
     if (Array.isArray(data)) return data;
     if (Array.isArray(data?.results)) return data.results;
@@ -396,14 +472,12 @@ export const productReviewApi = {
     product?: number;
     product_slug?: string;
   }) => {
-    const response = await api.get('/product-reviews/', {
-      params: {
-        ...(product ? { product } : {}),
-        ...(product_slug ? { product_slug } : {}),
-      },
+    const { data } = await api.get('/product-reviews/', {
+      params: compactObject({
+        product,
+        product_slug,
+      }),
     });
-
-    const data = response.data;
 
     if (Array.isArray(data)) return data;
     if (Array.isArray(data?.results)) return data.results;
@@ -414,22 +488,25 @@ export const productReviewApi = {
 
 export const productRatingApi = {
   listByProduct: async (params: { product?: number; product_slug?: string }) => {
-    const response = await api.get('/product-ratings/', { params });
-    return response.data;
+    const { data } = await api.get('/product-ratings/', { params });
+    return data;
   },
 };
 
+/* ============================================================================
+ * Wishlist
+ * ========================================================================== */
+
 export const wishlistApi = {
-  getOrCreate: async () => (await api.post<Wishlist>('/wishlist/', {})).data,
+  getOrCreate: async () =>
+    postOne<Wishlist>('/wishlist/', {}),
 
   listItems: async () =>
-    normalizeList(
-      (await api.get<WishlistItem[] | { results: WishlistItem[] }>('/wishlist-items/')).data
-    ),
+    getList<WishlistItem>('/wishlist-items/'),
 
   addItem: async (payload: { product_id: number }) => {
     try {
-      return (await api.post<WishlistItem>('/wishlist-items/', payload)).data;
+      return await postOne<WishlistItem>('/wishlist-items/', payload);
     } catch (error) {
       console.error('wishlistApi.addItem failed:', error);
       throw error;
@@ -438,7 +515,7 @@ export const wishlistApi = {
 
   removeItem: async (id: number) => {
     try {
-      return (await api.delete(`/wishlist-items/${id}/`)).data;
+      return await deleteOne(`/wishlist-items/${id}/`);
     } catch (error) {
       console.error('wishlistApi.removeItem failed:', error);
       throw error;
@@ -446,27 +523,34 @@ export const wishlistApi = {
   },
 };
 
+/* ============================================================================
+ * Orders
+ * ========================================================================== */
+
 export const orderApi = {
   list: async () =>
-    normalizeList(
-      (await api.get<Order[] | { results: Order[] }>('/orders/')).data
-    ),
+    getList<Order>('/orders/'),
 
   detail: async (slug: string) =>
-    (await api.get<Order>(`/orders/${slug}/`)).data,
+    getOne<Order>(`/orders/${slug}/`),
 
   checkout: async (payload: {
     address_id: number;
     payment_method?: string;
     shipping_method_id?: number;
     coupon_code?: string;
-  }) => (await api.post<Order>('/orders/checkout/', payload)).data,
+  }) => postOne<Order>('/orders/checkout/', payload),
 
   update: async (slug: string, payload: Record<string, unknown>) =>
-    (await api.patch<Order>(`/orders/${slug}/`, payload)).data,
+    patchOne<Order>(`/orders/${slug}/`, payload),
 
-  removeItem: async (id: number) => api.delete(`/orders/${id}/`),
+  removeItem: async (id: number) =>
+    deleteOne(`/orders/${id}/`),
 };
+
+/* ============================================================================
+ * Notifications
+ * ========================================================================== */
 
 export const notificationApi = {
   async list(url?: string): Promise<PaginatedResponse<Notification>> {
@@ -474,13 +558,8 @@ export const notificationApi = {
       const endpoint = url ?? '/notifications/';
       const { data } = await api.get<PaginatedResponse<Notification>>(endpoint);
 
-      if (Array.isArray(data)) {
-        return data;
-      }
-
-      if (isPaginatedResponse<Notification>(data)) {
-        return data;
-      }
+      if (Array.isArray(data)) return data;
+      if (isPaginatedResponse(data)) return data;
 
       return {
         count: 0,
@@ -499,10 +578,7 @@ export const notificationApi = {
 
   async markRead(id: number): Promise<Notification> {
     try {
-      const { data } = await api.post<Notification>(
-        `/notifications/${id}/mark_read/`
-      );
-      return data;
+      return await postOne<Notification>(`/notifications/${id}/mark_read/`);
     } catch (error: any) {
       console.log(
         `POST /notifications/${id}/mark_read/ error:`,
@@ -514,8 +590,7 @@ export const notificationApi = {
 
   async markAllRead() {
     try {
-      const { data } = await api.post('/notifications/mark_all_read/');
-      return data;
+      return await postOne('/notifications/mark_all_read/');
     } catch (error: any) {
       console.log(
         'POST /notifications/mark_all_read/ error:',
@@ -526,74 +601,48 @@ export const notificationApi = {
   },
 };
 
+/* ============================================================================
+ * Coupons / inventory / addresses
+ * ========================================================================== */
+
 export const couponApi = {
   list: async () =>
-    normalizeList((await api.get<Coupon[] | { results: Coupon[] }>('/coupons/')).data),
+    getList<Coupon>('/coupons/'),
 
   validate: async (payload: { code: string; amount: string | number }) =>
-    (await api.post<CouponValidation>('/coupons/validate/', payload)).data,
+    postOne<CouponValidation>('/coupons/validate/', payload),
 };
 
 export const inventoryApi = {
   list: async () =>
-    normalizeList((await api.get<Inventory[] | { results: Inventory[] }>('/inventory/')).data),
+    getList<Inventory>('/inventory/'),
 
   movements: async () =>
-    normalizeList(
-      (await api.get<InventoryMovement[] | { results: InventoryMovement[] }>('/inventory-movements/')).data
-    ),
+    getList<InventoryMovement>('/inventory-movements/'),
 };
 
 export const addressApi = {
   list: async () =>
-    normalizeList((await api.get<Address[] | { results: Address[] }>('/addresses/')).data),
+    getList<Address>('/addresses/'),
 
   create: async (payload: AddressPayload) =>
-    (await api.post<Address>('/addresses/', payload)).data,
+    postOne<Address>('/addresses/', payload),
 
   update: async (id: number, payload: Partial<AddressPayload>) =>
-    (await api.patch<Address>(`/addresses/${id}/`, payload)).data,
+    patchOne<Address>(`/addresses/${id}/`, payload),
 
   remove: async (id: number) =>
-    (await api.delete(`/addresses/${id}/`)).data,
+    deleteOne(`/addresses/${id}/`),
 };
 
-const getApiErrorMessage = (error: any, fallback: string) => {
-  const data = error?.response?.data;
-
-  if (!data) return fallback;
-
-  // standard DRF
-  if (typeof data.detail === 'string') return data.detail;
-
-  // custom message
-  if (typeof data.message === 'string') return data.message;
-
-  // non-field errors
-  if (Array.isArray(data.non_field_errors) && data.non_field_errors[0]) {
-    return data.non_field_errors[0];
-  }
-
-  // field errors (e.g. address_id, phone_number)
-  const firstKey = Object.keys(data)[0];
-  if (firstKey && Array.isArray(data[firstKey])) {
-    return data[firstKey][0];
-  }
-
-  // fallback to stringified response (useful for MTN debug)
-  if (typeof data === 'object') {
-    return JSON.stringify(data);
-  }
-
-  return fallback;
-};
+/* ============================================================================
+ * Payments (customer)
+ * ========================================================================== */
 
 export const paymentApi = {
   list: async () => {
     try {
-      return normalizeList(
-        (await api.get<Payment[] | { results: Payment[] }>('/payments/')).data
-      );
+      return await getList<Payment>('/payments/');
     } catch (error: any) {
       console.log('GET /payments/ error:', error?.response?.data || error.message);
       throw new Error(getApiErrorMessage(error, 'Failed to load payments.'));
@@ -602,7 +651,7 @@ export const paymentApi = {
 
   create: async (payload: PaymentPayload) => {
     try {
-      return (await api.post<Payment>('/payments/', payload)).data;
+      return await postOne<Payment>('/payments/', payload);
     } catch (error: any) {
       console.log('POST /payments/ error:', error?.response?.data || error.message);
       throw new Error(getApiErrorMessage(error, 'Failed to create payment.'));
@@ -615,7 +664,7 @@ export const paymentApi = {
     phone_number: string;
   }) => {
     try {
-      return (await api.post('/payments/mtn/initiate/', payload)).data;
+      return await postOne('/payments/mtn/initiate/', payload);
     } catch (error: any) {
       console.log(
         'POST /payments/mtn/initiate/ error:',
@@ -633,7 +682,7 @@ export const paymentApi = {
 
   checkStatus: async (reference: string) => {
     try {
-      return (await api.get(`/payments/${reference}/status/`)).data;
+      return await getOne(`/payments/${reference}/status/`);
     } catch (error: any) {
       console.log(
         `GET /payments/${reference}/status/ error:`,
@@ -651,14 +700,13 @@ export const paymentApi = {
 
   finalizeOrder: async (reference: string) => {
     try {
-      return (await api.post(`/payments/${reference}/finalize-order/`)).data;
+      return await postOne(`/payments/${reference}/finalize-order/`);
     } catch (error: any) {
       console.log(
         `POST /payments/${reference}/finalize-order/ error:`,
         error?.response?.data || error.message
       );
 
-      // special handling for MTN async delay
       const message = getApiErrorMessage(error, '');
 
       if (message.toLowerCase().includes('still being confirmed')) {
@@ -667,308 +715,349 @@ export const paymentApi = {
         );
       }
 
-      throw new Error(
-        message || 'Failed to finalize paid order.'
-      );
+      throw new Error(message || 'Failed to finalize paid order.');
     }
   },
 };
 
+/* ============================================================================
+ * Shipping
+ * ========================================================================== */
+
 export const shippingApi = {
   methods: async () =>
-    normalizeList(
-      (await api.get<ShippingMethod[] | { results: ShippingMethod[] }>('/shipping-methods/')).data
-    ),
+    getList<ShippingMethod>('/shipping-methods/'),
 
   shipments: async () =>
-    normalizeList((await api.get<Shipment[] | { results: Shipment[] }>('/shipments/')).data),
+    getList<Shipment>('/shipments/'),
 
   createShipment: async (payload: ShipmentPayload) =>
-    (await api.post<Shipment>('/shipments/', payload)).data,
+    postOne<Shipment>('/shipments/', payload),
 };
+
+/* ============================================================================
+ * Tenant
+ * ========================================================================== */
 
 export const tenantApi = {
-  current: async () => (await api.get('/tenants/current/')).data,
-  branding: async () => (await api.get<TenantBranding>('/tenants/current/branding/')).data,
+  current: async () => getOne('/tenants/current/'),
+
+  branding: async () =>
+    getOne<TenantBranding>('/tenants/current/branding/'),
+
   updateBranding: async (payload: Partial<TenantBranding>) =>
-    (await api.patch<TenantBranding>('/tenants/current/branding/', payload)).data,
-  settings: async () => (await api.get<TenantSettings>('/tenants/current/settings/')).data,
+    patchOne<TenantBranding>('/tenants/current/branding/', payload),
+
+  settings: async () =>
+    getOne<TenantSettings>('/tenants/current/settings/'),
+
   updateSettings: async (payload: Partial<TenantSettings>) =>
-    (await api.patch<TenantSettings>('/tenants/current/settings/', payload)).data,
+    patchOne<TenantSettings>('/tenants/current/settings/', payload),
+
   featureFlags: async () =>
-    normalizeList(
-      (await api.get<TenantFeatureFlag[] | { results: TenantFeatureFlag[] }>('/tenants/current/feature-flags/')).data
-    ),
+    getList<TenantFeatureFlag>('/tenants/current/feature-flags/'),
+
   createFeatureFlag: async (payload: Partial<TenantFeatureFlag>) =>
-    (await api.post<TenantFeatureFlag>('/tenants/current/feature-flags/', payload)).data,
+    postOne<TenantFeatureFlag>('/tenants/current/feature-flags/', payload),
+
   memberships: async () =>
-    normalizeList(
-      (await api.get<TenantMembership[] | { results: TenantMembership[] }>('/tenants/current/memberships/')).data
-    ),
+    getList<TenantMembership>('/tenants/current/memberships/'),
+
   createMembership: async (payload: Record<string, unknown>) =>
-    (await api.post<TenantMembership>('/tenants/current/memberships/', payload)).data,
+    postOne<TenantMembership>('/tenants/current/memberships/', payload),
+
   updateMembership: async (id: number | string, payload: Record<string, unknown>) =>
-    (await api.patch<TenantMembership>(`/tenants/current/memberships/${id}/`, payload)).data,
+    patchOne<TenantMembership>(`/tenants/current/memberships/${id}/`, payload),
 };
 
-export type ContactPayload = {
-  name: string;
-  email: string;
-  message: string;
-  subject?: string;
-};
+/* ============================================================================
+ * Support
+ * ========================================================================== */
 
 export const supportApi = {
   create: async (payload: ContactPayload) =>
-    (await api.post<{ detail: string; id?: number }>('/contact/', payload)).data,
+    postOne<{ detail: string; id?: number }>('/contact/', payload),
 
   list: async () =>
-    normalizeList(
-      (
-        await api.get<SupportMessage[] | { results: SupportMessage[] }>(
-          '/support-messages/'
-        )
-      ).data
-    ),
+    getList<SupportMessage>('/support-messages/'),
 
   update: async (id: number, payload: Partial<SupportMessage>) =>
-    (await api.patch<SupportMessage>(`/support-messages/${id}/`, payload)).data,
+    patchOne<SupportMessage>(`/support-messages/${id}/`, payload),
 };
 
+/* ============================================================================
+ * Admin payments
+ * ========================================================================== */
+
+const ADMIN_PAYMENTS_BASE = '/admin/payments';
+
+const adminPaymentsApi = {
+  list: async (params?: PaymentListParams): Promise<Payment[]> =>
+    getList<Payment>(`${ADMIN_PAYMENTS_BASE}/`, compactObject({
+      status: params?.status,
+      provider: params?.provider,
+      search: params?.search,
+    })),
+
+  get: async (id: number): Promise<Payment> =>
+    getOne<Payment>(`${ADMIN_PAYMENTS_BASE}/${id}/`),
+
+  update: async (id: number, payload: UpdatePaymentPayload): Promise<Payment> =>
+    patchOne<Payment>(`${ADMIN_PAYMENTS_BASE}/${id}/`, compactObject(payload)),
+
+  updateStatus: async (
+    id: number,
+    status: PaymentStatus | string
+  ): Promise<Payment> =>
+    patchOne<Payment>(`${ADMIN_PAYMENTS_BASE}/${id}/`, { status }),
+
+  updateProvider: async (
+    id: number,
+    provider: PaymentProvider | string
+  ): Promise<Payment> =>
+    patchOne<Payment>(`${ADMIN_PAYMENTS_BASE}/${id}/`, { provider }),
+
+  updateTransactionId: async (
+    id: number,
+    transaction_id: string
+  ): Promise<Payment> =>
+    patchOne<Payment>(`${ADMIN_PAYMENTS_BASE}/${id}/`, { transaction_id }),
+
+  markPaid: async (
+    id: number,
+    payload?: {
+      transaction_id?: string;
+      provider_response?: Record<string, unknown>;
+    }
+  ): Promise<Payment> =>
+    patchOne<Payment>(`${ADMIN_PAYMENTS_BASE}/${id}/`, {
+      status: 'PAID',
+      ...payload,
+    }),
+
+  markFailed: async (
+    id: number,
+    payload?: {
+      provider_response?: Record<string, unknown>;
+    }
+  ): Promise<Payment> =>
+    patchOne<Payment>(`${ADMIN_PAYMENTS_BASE}/${id}/`, {
+      status: 'FAILED',
+      ...payload,
+    }),
+
+  markProcessing: async (id: number): Promise<Payment> =>
+    patchOne<Payment>(`${ADMIN_PAYMENTS_BASE}/${id}/`, {
+      status: 'PROCESSING',
+    }),
+
+  markRefunded: async (id: number): Promise<Payment> =>
+    patchOne<Payment>(`${ADMIN_PAYMENTS_BASE}/${id}/`, {
+      status: 'REFUNDED',
+    }),
+
+  markCancelled: async (id: number): Promise<Payment> =>
+    patchOne<Payment>(`${ADMIN_PAYMENTS_BASE}/${id}/`, {
+      status: 'CANCELLED',
+    }),
+};
+
+/* ============================================================================
+ * Admin
+ * ========================================================================== */
+
 export const adminApi = {
+  /* users / tenant */
   users: tenantApi.memberships,
+  memberships: tenantApi.memberships,
+  createMembership: tenantApi.createMembership,
+  updateMembership: tenantApi.updateMembership,
 
-  categories: async () =>
-    normalizeList((await api.get<Category[] | { results: Category[] }>('/categories/')).data),
-
-  activeCategories: async () =>
-    normalizeList(
-      (await api.get<Category[] | { results: Category[] }>('/categories/', { params: { is_active: true } })).data
-    ),
-
-  category: async (slug: string) =>
-    (await api.get<Category>(`/categories/${slug}/`)).data,
-
-  createCategory: async (payload: Partial<Category> & { name: string; slug: string }) =>
-    (await api.post<Category>('/categories/', payload)).data,
-
-  updateCategory: async (slug: string, payload: Record<string, unknown>) =>
-    (await api.patch<Category>(`/categories/${slug}/`, payload)).data,
-
-  removeCategory: async (slug: string) =>
-    (await api.delete(`/categories/${slug}/`)).data,
-
-  products: async (params?: ProductQueryParams) =>
-    normalizeList(
-      (
-        await api.get<Product[] | { results: Product[] }>('/products/', {
-          params,
-        })
-      ).data
-    ),
-
-  activeProducts: async () =>
-    normalizeList(
-      (await api.get<Product[] | { results: Product[] }>('/products/', { params: { is_active: true } })).data
-    ),
-
-  product: async (slug: string) =>
-    (await api.get<Product>(`/products/${slug}/`)).data,
-
-  createProduct: async (payload: Record<string, unknown>) =>
-    (await api.post<Product>('/products/', payload)).data,
-
-  updateProduct: async (slug: string, payload: Record<string, unknown>) =>
-    (await api.patch<Product>(`/products/${slug}/`, payload)).data,
-
-  removeProduct: async (slug: string) =>
-    (await api.delete(`/products/${slug}/`)).data,
-
-  orders: async () =>
-    normalizeList((await api.get<Order[] | { results: Order[] }>('/orders/')).data),
-
-  updateOrder: async (slug: string, payload: Record<string, unknown>) =>
-    (await api.patch<Order>(`/orders/${slug}/`, payload)).data,
-
-  transitionOrder: async (slug: string, status: string) =>
-    (await api.post<Order>(`/orders/${slug}/transition-status/`, { status })).data,
-
-  payments: async () =>
-    normalizeList((await api.get<Payment[] | { results: Payment[] }>('/payments/')).data),
-
-  inventory: inventoryApi.list,
-
-  coupons: async () =>
-    normalizeList((await api.get<Coupon[] | { results: Coupon[] }>('/coupons/')).data),
-
-  createCoupon: async (payload: Record<string, unknown>) =>
-    (await api.post<Coupon>('/coupons/', payload)).data,
-
-  updateCoupon: async (id: number, payload: Record<string, unknown>) =>
-    (await api.patch<Coupon>(`/coupons/${id}/`, payload)).data,
-
-  removeCoupon: async (id: number) =>
-    (await api.delete(`/coupons/${id}/`)).data,
-
-  notifications: notificationApi.list,
-  supportMessages: supportApi.list,
-  updateSupportMessage: supportApi.update,
   branding: tenantApi.branding,
   updateBranding: tenantApi.updateBranding,
   settings: tenantApi.settings,
   updateSettings: tenantApi.updateSettings,
   featureFlags: tenantApi.featureFlags,
   createFeatureFlag: tenantApi.createFeatureFlag,
-  memberships: tenantApi.memberships,
-  createMembership: tenantApi.createMembership,
-  updateMembership: tenantApi.updateMembership,
+
+  /* categories */
+  categories: async () => getList<Category>('/categories/'),
+  activeCategories: async () =>
+    getList<Category>('/categories/', { is_active: true }),
+  category: async (slug: string) =>
+    getOne<Category>(`/categories/${slug}/`),
+  createCategory: async (payload: Partial<Category> & { name: string; slug: string }) =>
+    postOne<Category>('/categories/', payload),
+  updateCategory: async (slug: string, payload: Record<string, unknown>) =>
+    patchOne<Category>(`/categories/${slug}/`, payload),
+  removeCategory: async (slug: string) =>
+    deleteOne(`/categories/${slug}/`),
+
+  /* products */
+  products: async (params?: ProductQueryParams) =>
+    getList<Product>('/products/', params),
+  activeProducts: async () =>
+    getList<Product>('/products/', { is_active: true }),
+  product: async (slug: string) =>
+    getOne<Product>(`/products/${slug}/`),
+  createProduct: async (payload: Record<string, unknown>) =>
+    postOne<Product>('/products/', payload),
+  updateProduct: async (slug: string, payload: Record<string, unknown>) =>
+    patchOne<Product>(`/products/${slug}/`, payload),
+  removeProduct: async (slug: string) =>
+    deleteOne(`/products/${slug}/`),
+
+  /* orders */
+  orders: async () =>
+    getList<Order>('/orders/'),
+  updateOrder: async (slug: string, payload: Record<string, unknown>) =>
+    patchOne<Order>(`/orders/${slug}/`, payload),
+  transitionOrder: async (slug: string, status: string) =>
+    postOne<Order>(`/orders/${slug}/transition-status/`, { status }),
+
+  /* payments */
+  payments: adminPaymentsApi.list,
+  payment: adminPaymentsApi.get,
+  updatePayment: adminPaymentsApi.update,
+  updatePaymentStatus: adminPaymentsApi.updateStatus,
+  updatePaymentProvider: adminPaymentsApi.updateProvider,
+  updatePaymentTransactionId: adminPaymentsApi.updateTransactionId,
+  markPaymentPaid: adminPaymentsApi.markPaid,
+  markPaymentFailed: adminPaymentsApi.markFailed,
+  markPaymentProcessing: adminPaymentsApi.markProcessing,
+  markPaymentRefunded: adminPaymentsApi.markRefunded,
+  markPaymentCancelled: adminPaymentsApi.markCancelled,
+
+  /* shared resources */
+  inventory: inventoryApi.list,
+  inventoryMovements: inventoryApi.movements,
+
+  coupons: couponApi.list,
+  createCoupon: async (payload: Record<string, unknown>) =>
+    postOne<Coupon>('/coupons/', payload),
+  updateCoupon: async (id: number, payload: Record<string, unknown>) =>
+    patchOne<Coupon>(`/coupons/${id}/`, payload),
+  removeCoupon: async (id: number) =>
+    deleteOne(`/coupons/${id}/`),
+
+  notifications: notificationApi.list,
+  createNotification: async (payload: Record<string, unknown>) =>
+    postOne<Notification>('/notifications/', payload),
+  updateNotification: async (id: number, payload: Record<string, unknown>) =>
+    patchOne<Notification>(`/notifications/${id}/`, payload),
+  removeNotification: async (id: number) =>
+    deleteOne(`/notifications/${id}/`),
+  markNotificationRead: async (id: number) =>
+    postOne<Notification>(`/notifications/${id}/mark_read/`),
+
+  supportMessages: supportApi.list,
+  updateSupportMessage: supportApi.update,
+
   addresses: addressApi.list,
-  paymentsList: paymentApi.list,
+
   shippingMethods: shippingApi.methods,
   shipments: shippingApi.shipments,
+
   reviews: catalogApi.reviews,
   ratings: catalogApi.ratings,
 
   wishlists: async () =>
-    normalizeList((await api.get<Wishlist[] | { results: Wishlist[] }>('/wishlist/')).data),
-
+    getList<Wishlist>('/wishlist/'),
   wishlistItems: async () =>
-    normalizeList(
-      (await api.get<WishlistItem[] | { results: WishlistItem[] }>('/wishlist-items/')).data
-    ),
+    getList<WishlistItem>('/wishlist-items/'),
 
   carts: async () =>
-    normalizeList((await api.get<Cart[] | { results: Cart[] }>('/carts/')).data),
-
+    getList<Cart>('/carts/'),
   cartItems: cartApi.listItems,
 
   orderItems: async () =>
-    normalizeList((await api.get<OrderItem[] | { results: OrderItem[] }>('/order-items/')).data),
+    getList<OrderItem>('/order-items/'),
 
-  inventoryMovements: inventoryApi.movements,
-
-  createCart: async () => (await api.post<Cart>('/carts/', {})).data,
-
-  removeCart: async (id: number) => (await api.delete(`/carts/${id}/`)).data,
+  createCart: async () =>
+    postOne<Cart>('/carts/', {}),
+  removeCart: async (id: number) =>
+    deleteOne(`/carts/${id}/`),
 
   createCartItem: async (payload: { variant_id: number; quantity: number }) =>
-    (await api.post<CartItem>('/cart-items/', payload)).data,
-
-  updateCartItem: async (id: number, payload: { quantity?: number; variant_id?: number }) =>
-    (await api.patch<CartItem>(`/cart-items/${id}/`, payload)).data,
-
+    postOne<CartItem>('/cart-items/', payload),
+  updateCartItem: async (
+    id: number,
+    payload: { quantity?: number; variant_id?: number }
+  ) => patchOne<CartItem>(`/cart-items/${id}/`, payload),
   removeCartItem: async (id: number) =>
-    (await api.delete(`/cart-items/${id}/`)).data,
+    deleteOne(`/cart-items/${id}/`),
 
   createOrder: async (payload: { slug: string; description: string }) =>
-    (await api.post<Order>('/orders/', payload)).data,
-
+    postOne<Order>('/orders/', payload),
   removeOrder: async (slug: string) =>
-    (await api.delete(`/orders/${slug}/`)).data,
+    deleteOne(`/orders/${slug}/`),
 
-  createOrderItem: async (payload: { order: number; product: number; quantity: number }) =>
-    (await api.post<OrderItem>('/order-items/', payload)).data,
-
+  createOrderItem: async (payload: {
+    order: number;
+    product: number;
+    quantity: number;
+  }) => postOne<OrderItem>('/order-items/', payload),
   updateOrderItem: async (id: number, payload: Record<string, unknown>) =>
-    (await api.patch<OrderItem>(`/order-items/${id}/`, payload)).data,
-
+    patchOne<OrderItem>(`/order-items/${id}/`, payload),
   removeOrderItem: async (id: number) =>
-    (await api.delete(`/order-items/${id}/`)).data,
+    deleteOne(`/order-items/${id}/`),
 
-  createReview: async (payload: { product: number; rating: number; comment: string }) =>
-    (await api.post<Review>('/reviews/', payload)).data,
-
+  createReview: async (payload: {
+    product: number;
+    rating: number;
+    comment: string;
+  }) => postOne<Review>('/reviews/', payload),
   updateReview: async (id: number, payload: Record<string, unknown>) =>
-    (await api.patch<Review>(`/reviews/${id}/`, payload)).data,
-
+    patchOne<Review>(`/reviews/${id}/`, payload),
   removeReview: async (id: number) =>
-    (await api.delete(`/reviews/${id}/`)).data,
+    deleteOne(`/reviews/${id}/`),
 
   createWishlist: async () =>
-    (await api.post<Wishlist>('/wishlist/', {})).data,
-
+    postOne<Wishlist>('/wishlist/', {}),
   removeWishlist: async (id: number) =>
-    (await api.delete(`/wishlist/${id}/`)).data,
+    deleteOne(`/wishlist/${id}/`),
 
   createWishlistItem: async (payload: { product_id: number }) =>
-    (await api.post<WishlistItem>('/wishlist-items/', payload)).data,
-
+    postOne<WishlistItem>('/wishlist-items/', payload),
   removeWishlistItem: async (id: number) =>
-    (await api.delete(`/wishlist-items/${id}/`)).data,
+    deleteOne(`/wishlist-items/${id}/`),
 
   createAddress: async (payload: AddressPayload) =>
-    (await api.post<Address>('/addresses/', payload)).data,
-
+    postOne<Address>('/addresses/', payload),
   updateAddress: async (id: number, payload: Record<string, unknown>) =>
-    (await api.patch<Address>(`/addresses/${id}/`, payload)).data,
-
+    patchOne<Address>(`/addresses/${id}/`, payload),
   removeAddress: async (id: number) =>
-    (await api.delete(`/addresses/${id}/`)).data,
+    deleteOne(`/addresses/${id}/`),
 
   createPayment: async (payload: PaymentPayload) =>
-    (await api.post<Payment>('/payments/', payload)).data,
-
-  updatePayment: async (id: number, payload: Record<string, unknown>) =>
-    (await api.patch<Payment>(`/payments/${id}/`, payload)).data,
-
-  markPaymentPaid: async (
-    id: number,
-    payload: { transaction_id?: string; provider_response?: Record<string, unknown> }
-  ) => (await api.post<Payment>(`/payments/${id}/mark_paid/`, payload)).data,
-
-  markPaymentFailed: async (
-    id: number,
-    payload: { provider_response?: Record<string, unknown> }
-  ) => (await api.post<Payment>(`/payments/${id}/mark_failed/`, payload)).data,
+    postOne<Payment>('/payments/', payload),
 
   createShippingMethod: async (payload: ShippingMethodPayload) =>
-    (await api.post<ShippingMethod>('/shipping-methods/', payload)).data,
-
+    postOne<ShippingMethod>('/shipping-methods/', payload),
   updateShippingMethod: async (id: number, payload: Record<string, unknown>) =>
-    (await api.patch<ShippingMethod>(`/shipping-methods/${id}/`, payload)).data,
-
+    patchOne<ShippingMethod>(`/shipping-methods/${id}/`, payload),
   removeShippingMethod: async (id: number) =>
-    (await api.delete(`/shipping-methods/${id}/`)).data,
+    deleteOne(`/shipping-methods/${id}/`),
 
   createShipment: async (payload: ShipmentPayload) =>
-    (await api.post<Shipment>('/shipments/', payload)).data,
-
+    postOne<Shipment>('/shipments/', payload),
   updateShipment: async (id: number, payload: Record<string, unknown>) =>
-    (await api.patch<Shipment>(`/shipments/${id}/`, payload)).data,
-
+    patchOne<Shipment>(`/shipments/${id}/`, payload),
   removeShipment: async (id: number) =>
-    (await api.delete(`/shipments/${id}/`)).data,
-
+    deleteOne(`/shipments/${id}/`),
   markShipmentShipped: async (id: number, payload: { tracking_number?: string }) =>
-    (await api.post<Shipment>(`/shipments/${id}/mark_shipped/`, payload)).data,
-
+    postOne<Shipment>(`/shipments/${id}/mark_shipped/`, payload),
   markShipmentInTransit: async (id: number) =>
-    (await api.post<Shipment>(`/shipments/${id}/mark_in_transit/`)).data,
-
+    postOne<Shipment>(`/shipments/${id}/mark_in_transit/`),
   markShipmentDelivered: async (id: number) =>
-    (await api.post<Shipment>(`/shipments/${id}/mark_delivered/`)).data,
-
-  createNotification: async (payload: Record<string, unknown>) =>
-    (await api.post<Notification>('/notifications/', payload)).data,
-
-  updateNotification: async (id: number, payload: Record<string, unknown>) =>
-    (await api.patch<Notification>(`/notifications/${id}/`, payload)).data,
-
-  removeNotification: async (id: number) =>
-    (await api.delete(`/notifications/${id}/`)).data,
-
-  markNotificationRead: async (id: number) =>
-    (await api.post<Notification>(`/notifications/${id}/mark_read/`)).data,
+    postOne<Shipment>(`/shipments/${id}/mark_delivered/`),
 
   createInventory: async (payload: Record<string, unknown>) =>
-    (await api.post<Inventory>('/inventory/', payload)).data,
-
+    postOne<Inventory>('/inventory/', payload),
   updateInventory: async (id: number, payload: Record<string, unknown>) =>
-    (await api.patch<Inventory>(`/inventory/${id}/`, payload)).data,
-
+    patchOne<Inventory>(`/inventory/${id}/`, payload),
   removeInventory: async (id: number) =>
-    (await api.delete(`/inventory/${id}/`)).data,
-
+    deleteOne(`/inventory/${id}/`),
   adjustInventory: async (id: number, payload: Record<string, unknown>) =>
-    (await api.post(`/inventory/${id}/adjust/`, payload)).data,
+    postOne(`/inventory/${id}/adjust/`, payload),
 };
