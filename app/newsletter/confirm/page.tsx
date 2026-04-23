@@ -1,15 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api/client';
+import { getApiErrorMessage } from '@/lib/api/services';
 
-export default function NewsletterConfirmPage() {
+function NewsletterConfirmContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
 
   const [message, setMessage] = useState('Confirming your subscription...');
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>(
+    'loading'
+  );
 
   useEffect(() => {
     async function confirmSubscription() {
@@ -20,13 +23,17 @@ export default function NewsletterConfirmPage() {
       }
 
       try {
-        const response = await api.get(`/newsletter/confirm/?token=${encodeURIComponent(token)}`);
+        const response = await api.get(
+          `/newsletter/confirm/?token=${encodeURIComponent(token)}`
+        );
         setStatus('success');
-        setMessage(response.data?.detail || 'Your subscription has been confirmed.');
-      } catch (error: any) {
+        setMessage(
+          response.data?.detail || 'Your subscription has been confirmed.'
+        );
+      } catch (error: unknown) {
         setStatus('error');
         setMessage(
-          error?.response?.data?.detail || 'Unable to confirm your subscription.'
+          getApiErrorMessage(error, 'Unable to confirm your subscription.')
         );
       }
     }
@@ -37,9 +44,28 @@ export default function NewsletterConfirmPage() {
   return (
     <div className="mx-auto max-w-xl px-4 py-20 text-center">
       <h1 className="text-3xl font-bold">
-        {status === 'success' ? 'Subscription confirmed' : 'Newsletter confirmation'}
+        {status === 'success'
+          ? 'Subscription confirmed'
+          : 'Newsletter confirmation'}
       </h1>
       <p className="mt-4 text-sm text-slate-600">{message}</p>
     </div>
+  );
+}
+
+export default function NewsletterConfirmPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-xl px-4 py-20 text-center">
+          <h1 className="text-3xl font-bold">Newsletter confirmation</h1>
+          <p className="mt-4 text-sm text-slate-600">
+            Preparing confirmation...
+          </p>
+        </div>
+      }
+    >
+      <NewsletterConfirmContent />
+    </Suspense>
   );
 }

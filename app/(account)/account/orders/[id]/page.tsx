@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { useMemo, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -138,7 +137,8 @@ function DetailTile({
 }
 
 export default function OrderDetailsPage() {
-  const params = useParams<{ id: string }>();
+  const params = useParams();
+  const orderId = String(params?.id ?? '');
   const router = useRouter();
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -156,10 +156,10 @@ export default function OrderDetailsPage() {
     () =>
       orders.find(
         (item) =>
-          String((item as any).id) === String(params.id) ||
-          String((item as any).slug) === String(params.id)
+          String((item as any).id) === orderId ||
+          String((item as any).slug) === orderId
       ),
-    [orders, params.id]
+    [orders, orderId]
   );
 
   if (loading) {
@@ -324,13 +324,10 @@ export default function OrderDetailsPage() {
                 <div className="flex gap-3">
                   <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                     {getProductImage(item) ? (
-                      <Image
+                      <img
                         src={getProductImage(item)}
                         alt={getProductTitle(item)}
-                        width={64}
-                        height={64}
                         className="h-full w-full object-cover"
-                        unoptimized
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center">

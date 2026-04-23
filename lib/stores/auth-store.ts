@@ -2,8 +2,12 @@
 
 import { create } from 'zustand';
 import { authApi } from '@/lib/api/services';
-import type { User } from '@/lib/types';
-import { getCurrentRole, hasTenantRole } from '@/lib/auth/roles';
+import type { TenantMembershipRole, User } from '@/lib/types';
+import {
+  canAccessDashboardUser,
+  getCurrentRole,
+  hasTenantRole,
+} from '@/lib/auth/roles';
 
 interface AuthState {
   user: User | null;
@@ -18,9 +22,7 @@ interface AuthState {
 
   currentRole: () => string | null;
   canAccessDashboard: () => boolean;
-  hasRole: (
-    role: 'staff' | 'manager' | 'tenant_admin' | 'tenant_owner' | 'super_admin'
-  ) => boolean;
+  hasRole: (role: TenantMembershipRole) => boolean;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -77,6 +79,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   currentRole: () => getCurrentRole(get().user),
-  canAccessDashboard: () => hasTenantRole(get().user, 'staff'),
+  canAccessDashboard: () => canAccessDashboardUser(get().user),
   hasRole: (role) => hasTenantRole(get().user, role),
 }));

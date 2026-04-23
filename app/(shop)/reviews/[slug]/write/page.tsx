@@ -4,26 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Loader2, Star } from 'lucide-react';
-import { catalogApi, reviewApi } from '@/lib/api/services';
+import { catalogApi, getApiErrorMessage, reviewApi } from '@/lib/api/services';
 import { useAuth } from '@/lib/hooks/use-auth';
 import type { Product, Review } from '@/lib/types';
 import { showError, showSuccess } from '@/lib/toast';
-
-function getErrorMessage(error: any, fallback: string) {
-  if (error instanceof Error && error.message) return error.message;
-
-  const data = error?.response?.data;
-
-  if (typeof data === 'string') return data;
-  if (data?.detail) return String(data.detail);
-  if (data?.message) return String(data.message);
-  if (data?.non_field_errors?.[0]) return String(data.non_field_errors[0]);
-  if (data?.rating?.[0]) return String(data.rating[0]);
-  if (data?.comment?.[0]) return String(data.comment[0]);
-  if (data?.product?.[0]) return String(data.product[0]);
-
-  return fallback;
-}
 
 export default function WriteReviewPage({
   params,
@@ -46,7 +30,7 @@ export default function WriteReviewPage({
     if (!ready) return;
 
     if (!isAuthenticated) {
-      router.replace(`/login?next=/reviews/${params.slug}/write`);
+      router.replace(`/auth/login?next=/reviews/${params.slug}/write`);
     }
   }, [ready, isAuthenticated, router, params.slug]);
 
@@ -74,9 +58,9 @@ export default function WriteReviewPage({
           setRating(Number(myReview.rating) || 0);
           setComment(myReview.comment || '');
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (!mounted) return;
-        showError(getErrorMessage(error, 'Could not load this review form.'));
+        showError(getApiErrorMessage(error, 'Could not load this review form.'));
       } finally {
         if (mounted) {
           setLoadingPage(false);
@@ -99,7 +83,7 @@ export default function WriteReviewPage({
 
     if (!isAuthenticated || !user) {
       showError('Please log in to write a review.');
-      router.push(`/login?next=/reviews/${params.slug}/write`);
+      router.push(`/auth/login?next=/reviews/${params.slug}/write`);
       return;
     }
 
@@ -140,9 +124,8 @@ export default function WriteReviewPage({
 
       router.push(`/reviews/${params.slug}`);
       router.refresh();
-    } catch (error: any) {
-      console.log('Review submit error:', error?.response?.data || error);
-      showError(getErrorMessage(error, 'Failed to submit review.'));
+    } catch (error: unknown) {
+      showError(getApiErrorMessage(error, 'Failed to submit review.'));
     } finally {
       setSubmitting(false);
     }

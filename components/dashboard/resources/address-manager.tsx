@@ -14,9 +14,39 @@ const config = {
   remove: adminApi.removeAddress,
   readOnly: false,
   fields: [
-    { name: 'street', label: 'Street', type: 'text' },
-    { name: 'city', label: 'City', type: 'text' },
-    { name: 'country', label: 'Country', type: 'text' },
+    {
+      name: 'street_name',
+      label: 'Street / building',
+      type: 'text',
+      required: true,
+    },
+    { name: 'city', label: 'City', type: 'text', required: true },
+    {
+      name: 'phone_number',
+      label: 'Phone number',
+      type: 'text',
+    },
+    {
+      name: 'additional_telephone',
+      label: 'Additional telephone',
+      type: 'text',
+    },
+    {
+      name: 'region',
+      label: 'Region',
+      type: 'select',
+      required: true,
+      options: [
+        { label: 'Kampala Area', value: 'kampala_area' },
+        { label: 'Entebbe Area', value: 'entebbe_area' },
+        { label: 'Central Region', value: 'central_region' },
+        { label: 'Eastern Region', value: 'eastern_region' },
+        { label: 'Northern Region', value: 'northern_region' },
+        { label: 'Western Region', value: 'western_region' },
+        { label: 'Rest of Kampala', value: 'rest_of_kampala' },
+      ],
+    },
+    { name: 'is_default', label: 'Default address', type: 'checkbox' },
   ],
 };
 

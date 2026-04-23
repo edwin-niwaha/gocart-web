@@ -3,14 +3,17 @@ export type Tokens = {
   refresh: string;
 };
 
-export type UserType = 'USER' | 'ADMIN';
+export type UserType = 'USER' | 'CUSTOMER' | 'ADMIN' | 'PLATFORM_ADMIN';
 
 export type TenantMembershipRole =
+  | 'platform_admin'
   | 'super_admin'
   | 'tenant_owner'
   | 'tenant_admin'
   | 'manager'
-  | 'staff';
+  | 'tenant_staff'
+  | 'staff'
+  | 'customer';
 
 export type TenantMembership = {
   id: number;
@@ -35,6 +38,17 @@ export type User = {
   active_tenant_slug?: string | null;
 };
 
+export type Tenant = {
+  id: number;
+  name: string;
+  slug: string;
+  is_active: boolean;
+  branding?: TenantBranding | null;
+  settings?: TenantSettings | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type AuthResponse = {
   user: User;
   tokens: Tokens;
@@ -43,6 +57,7 @@ export type AuthResponse = {
 export type Category = {
   id: number;
   tenant?: number | null;
+  tenant_slug?: string | null;
   name: string;
   slug: string;
   image_url?: string | null;
@@ -54,6 +69,7 @@ export type Category = {
 export type ProductVariant = {
   id: number;
   tenant?: number | null;
+  tenant_slug?: string | null;
   name: string;
   sku: string;
   price: string | number;
@@ -69,6 +85,7 @@ export type ProductVariant = {
 export type Product = {
   id: number;
   tenant?: number | null;
+  tenant_slug?: string | null;
   category?: Category | null;
   title: string;
   slug: string;
@@ -78,6 +95,7 @@ export type Product = {
   is_active: boolean;
   is_featured?: boolean;
   base_price: string | number;
+  price?: string | number;
   is_in_stock: boolean;
   variants: ProductVariant[];
   average_rating?: string | number;
@@ -88,6 +106,8 @@ export type Product = {
 
 export type CartItem = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   product: Product;
   quantity: number;
   unit_price: string;
@@ -98,6 +118,8 @@ export type CartItem = {
 
 export type Cart = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   user: number;
   items: CartItem[];
   total_items: number;
@@ -108,6 +130,8 @@ export type Cart = {
 
 export type WishlistItem = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   product: Product;
   created_at: string;
   updated_at: string;
@@ -115,6 +139,8 @@ export type WishlistItem = {
 
 export type Wishlist = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   user: number;
   items: WishlistItem[];
   total_items: number;
@@ -124,6 +150,8 @@ export type Wishlist = {
 
 export type Review = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   user: User;
   user_id: number;
   product: number;
@@ -137,6 +165,8 @@ export type Review = {
 
 export type ProductRating = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   product: number;
   product_title: string;
   product_slug: string;
@@ -148,6 +178,8 @@ export type ProductRating = {
 
 export type OrderItem = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   product: number;
   product_title: string;
   product_slug: string;
@@ -169,6 +201,8 @@ export type OrderStatus =
 
 export type Order = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   slug: string;
   user: number;
   user_email: string;
@@ -182,6 +216,8 @@ export type Order = {
 
 export type Notification = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   user: number;
   notification_type: string;
   title: string;
@@ -195,6 +231,8 @@ export type Notification = {
 
 export type Coupon = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   code: string;
   description: string;
   discount_type: string;
@@ -221,6 +259,8 @@ export type CouponValidation = {
 
 export type Inventory = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   product: number;
   product_title: string;
   stock_quantity: number;
@@ -234,6 +274,8 @@ export type Inventory = {
 
 export type InventoryMovement = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   inventory: number;
   product_title: string;
   movement_type: string;
@@ -245,6 +287,8 @@ export type InventoryMovement = {
 
 export type Address = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   label: string;
   address_line1: string;
   address_line2?: string;
@@ -288,6 +332,7 @@ export type Payment = {
   username?: string;
 
   tenant?: number | null;
+  tenant_slug?: string | null;
 
   order?: number | null;
   order_slug?: string | null;
@@ -330,6 +375,8 @@ export type AdminPaymentUpdatePayload = {
 
 export type ShippingMethod = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   name: string;
   description: string;
   fee: string;
@@ -357,6 +404,8 @@ export type ShipmentStatus =
 
 export type Shipment = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   order: number;
   order_slug: string;
   user_email: string;
@@ -382,6 +431,8 @@ export type SupportMessageStatus = 'NEW' | 'IN_PROGRESS' | 'RESOLVED';
 
 export type SupportMessage = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   name: string;
   email: string;
   message: string;
@@ -401,6 +452,17 @@ export type TenantBranding = {
 };
 
 export type TenantSettings = {
+  store_name?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  contact_address?: string;
+  currency?: string;
+  locale?: string;
+  timezone?: string;
+  tax_inclusive_prices?: boolean;
+  default_tax_rate?: string | number | null;
+  shipping_settings?: Record<string, unknown>;
+  payment_settings?: Record<string, unknown>;
   support_chat_url?: string;
   website_url?: string;
   terms_url?: string;
@@ -426,6 +488,8 @@ export type CustomerAddressRegion =
 
 export type CustomerAddress = {
   id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
   street_name: string;
   city: string;
   phone_number: string;

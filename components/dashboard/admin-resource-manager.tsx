@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { getApiErrorMessage } from '@/lib/api/services';
 import type { AdminResourceConfig, ResourceField } from '@/lib/types/admin';
 
 function slugify(value: string) {
@@ -91,8 +92,8 @@ export function AdminResourceManager<T extends Record<string, any>>({
     try {
       const result = await config.list();
       setItems(result);
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || 'Failed to load resource.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to load resource.'));
     } finally {
       setLoading(false);
     }
@@ -166,13 +167,8 @@ export function AdminResourceManager<T extends Record<string, any>>({
 
       resetForm();
       await load();
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.detail ||
-        err?.message ||
-        JSON.stringify(err?.response?.data || {}) ||
-        'Request failed.'
-      );
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Request failed.'));
     } finally {
       setBusy(false);
     }
@@ -192,8 +188,8 @@ export function AdminResourceManager<T extends Record<string, any>>({
       await config.remove(item[idKey]);
       setMessage(`${config.singular} deleted.`);
       await load();
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || 'Delete failed.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Delete failed.'));
     } finally {
       setBusy(false);
     }
@@ -474,11 +470,9 @@ export function AdminResourceManager<T extends Record<string, any>>({
                             await action.onClick(item);
                             setMessage(`${action.label} completed.`);
                             await load();
-                          } catch (err: any) {
+                          } catch (err: unknown) {
                             setError(
-                              err?.response?.data?.detail ||
-                              err?.message ||
-                              `${action.label} failed.`
+                              getApiErrorMessage(err, `${action.label} failed.`)
                             );
                           } finally {
                             setBusy(false);

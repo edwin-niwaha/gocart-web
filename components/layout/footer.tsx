@@ -4,6 +4,12 @@ import { FormEvent, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useTenant } from '@/app/providers/TenantProvider';
 import { api } from '@/lib/api/client';
+import { getApiErrorMessage } from '@/lib/api/services';
+import {
+  canAccessDashboardUser,
+  canUseStorefrontShopping,
+} from '@/lib/auth/roles';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import {
   Globe,
   Mail,
@@ -19,6 +25,9 @@ type SubscribeState = 'idle' | 'loading' | 'success' | 'error';
 
 export function Footer() {
   const tenant = useTenant();
+  const user = useAuthStore((state) => state.user);
+  const canShop = canUseStorefrontShopping(user);
+  const dashboardAllowed = canAccessDashboardUser(user);
 
   const appName = tenant?.branding?.app_name || 'GoCart';
   const slogan = tenant?.branding?.hero_subtitle || 'Shop • Sell • Deliver';
@@ -71,14 +80,13 @@ export function Footer() {
       setSubscribeState('success');
       setMessage(response.data?.detail || 'You are subscribed to updates.');
       setEmail('');
-    } catch (error: any) {
-      console.error('Newsletter error:', error?.response?.data);
-
+    } catch (error: unknown) {
       setSubscribeState('error');
       setMessage(
-        error?.response?.data?.detail ||
-          error?.response?.data?.message ||
+        getApiErrorMessage(
+          error,
           'Unable to subscribe right now. Please try again.'
+        )
       );
     }
   };
@@ -152,8 +160,14 @@ export function Footer() {
 
           <FooterLink href="/products">All Products</FooterLink>
           <FooterLink href="/categories">Categories</FooterLink>
-          <FooterLink href="/wishlist">Wishlist</FooterLink>
-          <FooterLink href="/account/orders">My Orders</FooterLink>
+          {canShop ? (
+            <>
+              <FooterLink href="/account/wishlist">Wishlist</FooterLink>
+              <FooterLink href="/account/orders">My Orders</FooterLink>
+            </>
+          ) : dashboardAllowed ? (
+            <FooterLink href="/dashboard">Dashboard</FooterLink>
+          ) : null}
         </div>
 
         <div className="space-y-3">
@@ -210,20 +224,22 @@ export function Footer() {
             ) : null}
           </form>
 
-          <Link
-            href="/cart"
-            className="inline-flex items-center gap-2 text-sm text-slate-600 transition hover:text-[#127D61]"
-          >
-            <ShoppingCart size={15} />
-            View cart
-          </Link>
+          {canShop ? (
+            <Link
+              href="/cart"
+              className="inline-flex items-center gap-2 text-sm text-slate-600 transition hover:text-[#127D61]"
+            >
+              <ShoppingCart size={15} />
+              View cart
+            </Link>
+          ) : null}
         </div>
       </div>
 
       <div className="border-t border-slate-200">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-4 text-xs text-slate-500 md:flex-row md:items-center md:justify-between">
           <p>
-            © {new Date().getFullYear()}{' '}
+            &copy; {new Date().getFullYear()}{' '}
             <span className="font-semibold text-slate-700">{appName}</span>. All
             rights reserved.
           </p>
@@ -235,9 +251,11 @@ export function Footer() {
             <Link href="/terms" className="hover:text-[#127D61]">
               Terms
             </Link>
-            <Link href="/support" className="hover:text-[#127D61]">
-              Support
-            </Link>
+            {canShop ? (
+              <Link href="/support" className="hover:text-[#127D61]">
+                Support
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>
@@ -258,3 +276,4 @@ function FooterLink({
     </Link>
   );
 }
+

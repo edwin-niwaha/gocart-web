@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import {
   ChevronRight,
   Truck,
@@ -153,11 +152,10 @@ export default async function HomePage() {
                     className="flex items-center gap-3 rounded-md border border-[#E7E7E7] p-3 transition hover:bg-[#F7FAFA]"
                   >
                     <div className="relative h-10 w-10 overflow-hidden rounded-full border border-[#E7E7E7] bg-[#F7F8F8]">
-                      <Image
+                      <img
                         src={category.image_url || FALLBACK_CATEGORY}
                         alt={category.name || 'Category'}
-                        fill
-                        className="object-cover"
+                        className="h-full w-full object-cover"
                       />
                     </div>
 

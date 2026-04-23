@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from 'react';
 import { tenantApi } from '@/lib/api/services';
+import { getTenantSlug } from '@/lib/api/client';
+import { sanitizeTenantSlug } from '@/lib/tenant/resolve';
 import type {
   TenantBranding,
   TenantFeatureFlag,
@@ -16,6 +18,7 @@ import type {
 } from '@/lib/types';
 
 type TenantContextValue = {
+  slug: string | null;
   branding: TenantBranding | null;
   settings: TenantSettings | null;
   flags: TenantFeatureFlag[];
@@ -27,6 +30,7 @@ type TenantContextValue = {
 const TenantContext = createContext<TenantContextValue | null>(null);
 
 export function TenantProvider({ children }: { children: ReactNode }) {
+  const [slug, setSlug] = useState<string | null>(null);
   const [branding, setBranding] = useState<TenantBranding | null>(null);
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [flags, setFlags] = useState<TenantFeatureFlag[]>([]);
@@ -36,12 +40,24 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     setLoading(true);
 
     try {
-      const current = await tenantApi.current();
+      const expectedSlug = getTenantSlug();
+      setSlug(expectedSlug);
 
+      const current = await tenantApi.current();
+      const returnedSlug = sanitizeTenantSlug(
+        current?.slug ?? current?.tenant_slug ?? null
+      );
+
+      if (expectedSlug && returnedSlug && expectedSlug !== returnedSlug) {
+        throw new Error('Tenant response did not match the active storefront.');
+      }
+
+      setSlug(returnedSlug ?? expectedSlug);
       setBranding(current?.branding ?? null);
       setSettings(current?.settings ?? null);
       setFlags(Array.isArray(current?.feature_flags) ? current.feature_flags : []);
     } catch {
+      setSlug(getTenantSlug());
       setBranding(null);
       setSettings(null);
       setFlags([]);
@@ -56,6 +72,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<TenantContextValue>(
     () => ({
+      slug,
       branding,
       settings,
       flags,
@@ -66,7 +83,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         return typeof match?.enabled === 'boolean' ? match.enabled : fallback;
       },
     }),
-    [branding, settings, flags, loading]
+    [slug, branding, settings, flags, loading]
   );
 
   return (

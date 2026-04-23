@@ -12,31 +12,46 @@ import {
   Trash2,
   ArrowRight,
 } from 'lucide-react';
-import { cartApi } from '@/lib/api/services';
+import { canUseStorefrontShopping } from '@/lib/auth/roles';
+import { cartApi, getApiErrorMessage } from '@/lib/api/services';
+import { CustomerSessionRequired } from '@/components/storefront/customer-session-required';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import type { CartItem } from '@/lib/types';
 
 export default function CartPage() {
+  const user = useAuthStore((state) => state.user);
+  const hydrated = useAuthStore((state) => state.hydrated);
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyIds, setBusyIds] = useState<number[]>([]);
+  const canShop = canUseStorefrontShopping(user);
 
   const loadCart = useCallback(async () => {
     try {
       const data = await cartApi.listItems();
       setItems(data);
       setError(null);
-    } catch (error) {
-      console.error('Failed to load cart:', error);
+    } catch (error: unknown) {
       setItems([]);
-      setError('Failed to load cart items.');
+      setError(getApiErrorMessage(error, 'Failed to load cart items.'));
     }
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
+
+    if (!canShop) {
+      setItems([]);
+      setError(null);
+      setNotice(null);
+      setLoading(false);
+      return;
+    }
+
     loadCart().finally(() => setLoading(false));
-  }, [loadCart]);
+  }, [canShop, hydrated, loadCart]);
 
   const getItemPrice = (item: CartItem) => {
     return (
@@ -131,13 +146,10 @@ export default function CartPage() {
             cartItem.id === item.id ? { ...cartItem, ...updated } : cartItem
           )
         );
-      } catch (error: any) {
-        console.error('Failed to update cart item:', error);
+      } catch (error: unknown) {
         setItems(previousItems);
         setNotice(
-          error?.response?.data?.detail ||
-            error?.message ||
-            'Failed to update quantity.'
+          getApiErrorMessage(error, 'Failed to update quantity.')
         );
       }
     });
@@ -151,19 +163,21 @@ export default function CartPage() {
 
       try {
         await cartApi.removeItem(id);
-      } catch (error: any) {
-        console.error('Failed to remove cart item:', error);
+      } catch (error: unknown) {
         setItems(previousItems);
         setNotice(
-          error?.response?.data?.detail ||
-            error?.message ||
-            'Failed to remove item.'
+          getApiErrorMessage(error, 'Failed to remove item.')
         );
       }
     });
   };
 
-  if (loading) {
+  const retryLoadCart = () => {
+    setLoading(true);
+    loadCart().finally(() => setLoading(false));
+  };
+
+  if (!hydrated || loading) {
     return (
       <main className="min-h-screen bg-gray-50">
         <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
@@ -191,6 +205,19 @@ export default function CartPage() {
     );
   }
 
+  if (!canShop) {
+    return (
+      <main className="min-h-screen bg-gray-50">
+        <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+          <CustomerSessionRequired
+            title="The customer cart is not available in a management session."
+            description="Your dashboard session is kept separate from customer shopping so staff and tenant accounts do not inherit storefront cart items."
+          />
+        </section>
+      </main>
+    );
+  }
+
   if (error && !items.length) {
     return (
       <main className="min-h-screen bg-gray-50">
@@ -201,12 +228,22 @@ export default function CartPage() {
             </h1>
             <p className="mt-2 text-sm text-red-600">{error}</p>
 
-            <Link
-              href="/products"
-              className="mt-5 inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700"
-            >
-              Continue shopping
-            </Link>
+            <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={retryLoadCart}
+                className="inline-flex items-center justify-center rounded-full bg-red-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700"
+              >
+                Try again
+              </button>
+
+              <Link
+                href="/products"
+                className="inline-flex items-center justify-center rounded-full border border-red-200 bg-white px-5 py-3 text-sm font-bold text-red-700 transition hover:bg-red-50"
+              >
+                Continue shopping
+              </Link>
+            </div>
           </div>
         </section>
       </main>

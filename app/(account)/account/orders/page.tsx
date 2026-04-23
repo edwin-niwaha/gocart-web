@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -11,7 +11,7 @@ import {
   Star,
 } from 'lucide-react';
 
-import { orderApi, reviewApi } from '@/lib/api/services';
+import { getApiErrorMessage, orderApi, reviewApi } from '@/lib/api/services';
 import type { Order, OrderItem, Review } from '@/lib/types';
 
 type SelectedProduct = {
@@ -125,17 +125,18 @@ function RatingPicker({
           key={star}
           type="button"
           onClick={() => onChange(star)}
-          className="text-3xl leading-none"
+          className="rounded-full p-1 transition hover:bg-amber-50"
         >
-          <span className={star <= value ? 'text-amber-500' : 'text-gray-300'}>
-            ★
-          </span>
+          <Star
+            className={`h-7 w-7 ${
+              star <= value ? 'fill-amber-500 text-amber-500' : 'text-gray-300'
+            }`}
+          />
         </button>
       ))}
     </div>
   );
 }
-
 function ReviewModal({
   open,
   saving,
@@ -373,11 +374,10 @@ export default function OrdersPage() {
 
       setOrders(ordersData || []);
       setReviews(normalizeReviewList(reviewsData));
-    } catch (error) {
-      console.error('Failed to load orders:', error);
+    } catch (error: unknown) {
       setOrders([]);
       setReviews([]);
-      setError('Failed to load orders.');
+      setError(getApiErrorMessage(error, 'Failed to load orders.'));
     } finally {
       setLoading(false);
     }
@@ -419,8 +419,8 @@ export default function OrdersPage() {
           setReviews(normalizeReviewList(refreshed));
           setSelectedProduct(null);
         }
-      } catch (error) {
-        console.error('Review not saved:', error);
+      } catch (error: unknown) {
+        setError(getApiErrorMessage(error, 'Review was not saved.'));
       } finally {
         setSaving(false);
       }
@@ -482,6 +482,13 @@ export default function OrdersPage() {
           {error && !orders.length ? (
             <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-center shadow-sm">
               <p className="text-sm font-bold text-red-700">{error}</p>
+              <button
+                type="button"
+                onClick={loadOrders}
+                className="mt-4 rounded-2xl bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700"
+              >
+                Try again
+              </button>
             </div>
           ) : !orders.length ? (
             <div className="rounded-3xl border border-gray-200 bg-white px-6 py-12 text-center shadow-sm">
@@ -526,3 +533,4 @@ export default function OrdersPage() {
     </main>
   );
 }
+

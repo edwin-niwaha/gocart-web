@@ -4,8 +4,20 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { authApi } from '@/lib/api/services';
+import { canAccessDashboardUser } from '@/lib/auth/roles';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { GoogleSignInButton } from '@/components/forms/google-signin-button';
+
+function getSafeNextPath() {
+  if (typeof window === 'undefined') return null;
+
+  const nextPath = new URLSearchParams(window.location.search).get('next');
+  if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//')) {
+    return null;
+  }
+
+  return nextPath;
+}
 
 export function LoginForm() {
   const router = useRouter();
@@ -21,7 +33,16 @@ export function LoginForm() {
     try {
       const response = await authApi.login(form);
       setUser(response.user);
-      router.push(response.user.user_type === 'ADMIN' ? '/dashboard' : '/account/orders');
+      const nextPath = getSafeNextPath();
+      const isDashboardUser = canAccessDashboardUser(response.user);
+
+      router.push(
+        isDashboardUser
+          ? nextPath?.startsWith('/dashboard')
+            ? nextPath
+            : '/dashboard'
+          : nextPath ?? '/account/orders'
+      );
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Invalid credentials.');
     } finally {

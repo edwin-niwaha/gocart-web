@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   CreditCard,
@@ -13,11 +13,22 @@ import { useRouter } from 'next/navigation';
 import {
   addressApi,
   cartApi,
+  couponApi,
+  getApiErrorMessage,
   orderApi,
   paymentApi,
+  shippingApi,
 } from '@/lib/api/services';
 import { notifyCartUpdated } from '@/lib/cart-events';
-import type { Address, CartItem } from '@/lib/types';
+import { createIdempotencyKey } from '@/lib/security/idempotency';
+import type {
+  CartItem,
+  CouponValidation,
+  CustomerAddress,
+  CustomerAddressPayload,
+  CustomerAddressRegion,
+  ShippingMethod,
+} from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 
 type PaymentProvider =
@@ -35,8 +46,12 @@ type AddressFormValues = {
   phone_number: string;
   additional_telephone: string;
   additional_information: string;
-  region: string;
+  region: CustomerAddressRegion;
   is_default: boolean;
+};
+
+type CheckoutAddress = CustomerAddress & {
+  label?: string | null;
 };
 
 const EMPTY_FORM: AddressFormValues = {
@@ -226,7 +241,9 @@ function AddressModal({
           <select
             className="select md:col-span-2"
             value={form.region}
-            onChange={(e) => setField('region', e.target.value)}
+            onChange={(e) =>
+              setField('region', e.target.value as CustomerAddressRegion)
+            }
           >
             {REGION_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -270,20 +287,33 @@ function AddressModal({
 
 export function CheckoutPanel() {
   const router = useRouter();
+  const checkoutIdempotencyKeyRef = useRef<string | null>(null);
+  const paymentInitiationIdempotencyKeyRef = useRef<string | null>(null);
+  const paymentFinalizationIdempotencyKeyRef = useRef<string | null>(null);
 
   const [items, setItems] = useState<CartItem[]>([]);
-  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [addresses, setAddresses] = useState<CheckoutAddress[]>([]);
+  const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [expandedAddressId, setExpandedAddressId] = useState<number | null>(null);
+  const [selectedShippingMethodId, setSelectedShippingMethodId] = useState<
+    number | null
+  >(null);
 
   const [paymentProvider, setPaymentProvider] =
     useState<PaymentProvider>('CASH');
   const [paymentMenuOpen, setPaymentMenuOpen] = useState(false);
   const [mtnPhone, setMtnPhone] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] =
+    useState<CouponValidation | null>(null);
+  const [couponSubtotal, setCouponSubtotal] = useState<number | null>(null);
+  const [couponError, setCouponError] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [pollingPayment, setPollingPayment] = useState(false);
   const [savingAddress, setSavingAddress] = useState(false);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [addressModalVisible, setAddressModalVisible] = useState(false);
 
   const [message, setMessage] = useState('');
@@ -301,17 +331,31 @@ export function CheckoutPanel() {
 
   const loadCheckoutData = useCallback(async () => {
     try {
-      const [cartData, addressData] = await Promise.all([
+      const [cartData, addressData, shippingData] = await Promise.all([
         cartApi.listItems().catch(() => []),
         addressApi.list().catch(() => []),
+        shippingApi.methods().catch(() => []),
       ]);
 
       setItems(cartData);
       setAddresses(addressData);
 
+      const activeShippingMethods = shippingData.filter(
+        (method) => method.is_active !== false
+      );
+
+      setShippingMethods(activeShippingMethods);
+      setSelectedShippingMethodId((current) => {
+        if (activeShippingMethods.some((method) => method.id === current)) {
+          return current;
+        }
+
+        return activeShippingMethods[0]?.id ?? null;
+      });
+
       if (addressData.length) {
         const defaultAddress =
-          addressData.find((item: any) => item.is_default) ?? addressData[0];
+          addressData.find((item) => item.is_default) ?? addressData[0];
         setSelectedAddressId(defaultAddress?.id ?? null);
         setExpandedAddressId(defaultAddress?.id ?? null);
       } else {
@@ -321,6 +365,8 @@ export function CheckoutPanel() {
     } catch {
       setItems([]);
       setAddresses([]);
+      setShippingMethods([]);
+      setSelectedShippingMethodId(null);
     }
   }, []);
 
@@ -346,7 +392,7 @@ export function CheckoutPanel() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const total = useMemo(() => {
+  const subtotal = useMemo(() => {
     return items.reduce((sum, item) => {
       const lineTotal =
         item.line_total != null
@@ -356,9 +402,45 @@ export function CheckoutPanel() {
     }, 0);
   }, [items]);
 
+  const selectedShippingMethod = useMemo(() => {
+    return (
+      shippingMethods.find((method) => method.id === selectedShippingMethodId) ??
+      null
+    );
+  }, [shippingMethods, selectedShippingMethodId]);
+
+  const shippingFee = useMemo(() => {
+    return Number(selectedShippingMethod?.fee ?? 0) || 0;
+  }, [selectedShippingMethod]);
+
+  const discountAmount = useMemo(() => {
+    return Math.max(0, Number(appliedCoupon?.discount ?? 0) || 0);
+  }, [appliedCoupon]);
+
+  const discountedSubtotal = useMemo(() => {
+    if (appliedCoupon?.final_amount != null) {
+      return Math.max(0, Number(appliedCoupon.final_amount) || 0);
+    }
+
+    return Math.max(0, subtotal - discountAmount);
+  }, [appliedCoupon, discountAmount, subtotal]);
+
+  const taxAmount = 0;
+  const total = discountedSubtotal + shippingFee + taxAmount;
+
   const itemCount = useMemo(() => {
     return items.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
   }, [items]);
+
+  useEffect(() => {
+    if (!appliedCoupon || couponSubtotal == null || couponSubtotal === subtotal) {
+      return;
+    }
+
+    setAppliedCoupon(null);
+    setCouponSubtotal(null);
+    setCouponError('Cart changed. Apply the coupon again to refresh the discount.');
+  }, [appliedCoupon, couponSubtotal, subtotal]);
 
   const selectedAddress = useMemo(() => {
     return addresses.find((item) => item.id === selectedAddressId) ?? null;
@@ -369,11 +451,23 @@ export function CheckoutPanel() {
     PAYMENT_OPTIONS[0];
 
   const isBusy = loading || pollingPayment;
-  const isPlaceOrderDisabled = !items.length || !selectedAddressId || isBusy;
+  const needsShippingMethod = shippingMethods.length > 0;
+  const isPlaceOrderDisabled =
+    !items.length ||
+    !selectedAddressId ||
+    (needsShippingMethod && !selectedShippingMethodId) ||
+    isBusy;
 
-  const getMtnFailureMessage = (statusRes: any): string => {
+  const getMtnFailureMessage = (statusRes: {
+    provider_response?: Record<string, unknown> | null;
+    reason?: unknown;
+  }): string => {
     const reason =
-      statusRes?.provider_response?.status_check?.reason ||
+      (
+        statusRes.provider_response as
+          | { status_check?: { reason?: unknown } }
+          | undefined
+      )?.status_check?.reason ||
       statusRes?.reason ||
       '';
 
@@ -431,11 +525,12 @@ export function CheckoutPanel() {
         'info'
       );
       return false;
-    } catch (error: any) {
+    } catch (error: unknown) {
       setFeedback(
-        error?.response?.data?.detail ||
-          error?.message ||
-          'Could not confirm payment status right now.',
+        getApiErrorMessage(
+          error,
+          'Could not confirm payment status right now.'
+        ),
         'error'
       );
       return false;
@@ -448,18 +543,17 @@ export function CheckoutPanel() {
     try {
       setSavingAddress(true);
 
-      const payload = {
-        label: values.label || values.city,
+      const payload: CustomerAddressPayload = {
         city: values.city,
         street_name: values.street_name,
-        phone_number: values.phone_number,
-        additional_telephone: values.additional_telephone,
-        additional_information: values.additional_information,
+        phone_number: values.phone_number || undefined,
+        additional_telephone: values.additional_telephone || undefined,
+        additional_information: values.additional_information || undefined,
         region: values.region,
         is_default: values.is_default,
       };
 
-      const created = await addressApi.create(payload as any);
+      const created = await addressApi.create(payload);
 
       if (created?.id) {
         setSelectedAddressId(Number(created.id));
@@ -469,11 +563,9 @@ export function CheckoutPanel() {
       setAddressModalVisible(false);
       setFeedback('Address saved successfully.', 'success');
       await loadCheckoutData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       setFeedback(
-        error?.response?.data?.detail ||
-          error?.message ||
-          'Failed to save address. Please try again.',
+        getApiErrorMessage(error, 'Failed to save address. Please try again.'),
         'error'
       );
     } finally {
@@ -485,17 +577,60 @@ export function CheckoutPanel() {
     if (!selectedAddress) return;
 
     try {
-      await addressApi.update(selectedAddress.id, { is_default: true } as any);
+      await addressApi.update(selectedAddress.id, { is_default: true });
       setFeedback('Default address updated successfully.', 'success');
       await loadCheckoutData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       setFeedback(
-        error?.response?.data?.detail ||
-          error?.message ||
-          'Failed to update address. Please try again.',
+        getApiErrorMessage(error, 'Failed to update address. Please try again.'),
         'error'
       );
     }
+  };
+
+  const handleApplyCoupon = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const code = couponCode.trim();
+    setCouponError('');
+
+    if (!code) {
+      setCouponError('Enter a coupon code.');
+      return;
+    }
+
+    if (!items.length || subtotal <= 0) {
+      setCouponError('Add items before applying a coupon.');
+      return;
+    }
+
+    try {
+      setApplyingCoupon(true);
+      const validation = await couponApi.validate({
+        code,
+        amount: subtotal,
+      });
+
+      setAppliedCoupon(validation);
+      setCouponSubtotal(subtotal);
+      setCouponCode(validation.code || code);
+      setFeedback('Coupon applied successfully.', 'success');
+    } catch (error: unknown) {
+      setAppliedCoupon(null);
+      setCouponSubtotal(null);
+      setCouponError(
+        getApiErrorMessage(error, 'Coupon could not be applied.')
+      );
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponSubtotal(null);
+    setCouponCode('');
+    setCouponError('');
   };
 
   const handleCashCheckout = useCallback(async () => {
@@ -504,10 +639,21 @@ export function CheckoutPanel() {
       return;
     }
 
-    const response = await orderApi.checkout({
-      address_id: selectedAddressId,
-      payment_method: 'CASH',
-    });
+    const idempotencyKey =
+      checkoutIdempotencyKeyRef.current ?? createIdempotencyKey('checkout');
+    checkoutIdempotencyKeyRef.current = idempotencyKey;
+
+    const response = await orderApi.checkout(
+      {
+        address_id: selectedAddressId,
+        payment_method: 'CASH',
+        ...(selectedShippingMethodId
+          ? { shipping_method_id: selectedShippingMethodId }
+          : {}),
+        ...(appliedCoupon?.code ? { coupon_code: appliedCoupon.code } : {}),
+      },
+      { idempotencyKey }
+    );
 
     const order = response?.order ?? response;
 
@@ -516,7 +662,13 @@ export function CheckoutPanel() {
 
     setFeedback(`Order ${order.slug} placed successfully.`, 'success');
     router.push('/account/orders');
-  }, [loadCheckoutData, router, selectedAddressId]);
+  }, [
+    appliedCoupon?.code,
+    loadCheckoutData,
+    router,
+    selectedAddressId,
+    selectedShippingMethodId,
+  ]);
 
   const handleMTNCheckout = useCallback(async () => {
     if (!selectedAddressId) {
@@ -544,24 +696,51 @@ export function CheckoutPanel() {
       return;
     }
 
-    const payment = await paymentApi.initiateMTN({
-      address_id: selectedAddressId,
-      phone_number: normalizedPhone,
-    });
+    const paymentIdempotencyKey =
+      paymentInitiationIdempotencyKeyRef.current ??
+      createIdempotencyKey('payment-initiate');
+    paymentInitiationIdempotencyKeyRef.current = paymentIdempotencyKey;
+
+    const payment = await paymentApi.initiateMTN(
+      {
+        address_id: selectedAddressId,
+        phone_number: normalizedPhone,
+        ...(selectedShippingMethodId
+          ? { shipping_method_id: selectedShippingMethodId }
+          : {}),
+        ...(appliedCoupon?.code ? { coupon_code: appliedCoupon.code } : {}),
+      },
+      { idempotencyKey: paymentIdempotencyKey }
+    );
 
     setFeedback('Approve the MTN Mobile Money prompt on your phone.', 'info');
 
     const paid = await pollPaymentStatus(payment.reference);
     if (!paid) return;
 
-    const result = await paymentApi.finalizeOrder(payment.reference);
+    const finalizationIdempotencyKey =
+      paymentFinalizationIdempotencyKeyRef.current ??
+      createIdempotencyKey('payment-finalize');
+    paymentFinalizationIdempotencyKeyRef.current = finalizationIdempotencyKey;
+
+    const result = await paymentApi.finalizeOrder(payment.reference, {
+      idempotencyKey: finalizationIdempotencyKey,
+    });
 
     notifyCartUpdated();
     await loadCheckoutData();
 
     setFeedback(`Order ${result.order.slug} placed successfully.`, 'success');
     router.push('/account/orders');
-  }, [loadCheckoutData, mtnPhone, pollPaymentStatus, router, selectedAddressId]);
+  }, [
+    appliedCoupon?.code,
+    loadCheckoutData,
+    mtnPhone,
+    pollPaymentStatus,
+    router,
+    selectedAddressId,
+    selectedShippingMethodId,
+  ]);
 
   const onPlaceOrder = async () => {
     if (isBusy) return;
@@ -576,6 +755,11 @@ export function CheckoutPanel() {
         'Please select or add a delivery address before placing your order.',
         'info'
       );
+      return;
+    }
+
+    if (needsShippingMethod && !selectedShippingMethodId) {
+      setFeedback('Please choose a shipping method.', 'info');
       return;
     }
 
@@ -608,14 +792,15 @@ export function CheckoutPanel() {
       }
 
       setFeedback('Unsupported payment method.', 'error');
-    } catch (error: any) {
+    } catch (error: unknown) {
       setFeedback(
-        error?.response?.data?.detail ||
-          error?.message ||
-          'Checkout failed. Please try again.',
+        getApiErrorMessage(error, 'Checkout failed. Please try again.'),
         'error'
       );
     } finally {
+      checkoutIdempotencyKeyRef.current = null;
+      paymentInitiationIdempotencyKeyRef.current = null;
+      paymentFinalizationIdempotencyKeyRef.current = null;
       setLoading(false);
     }
   };
@@ -733,7 +918,7 @@ export function CheckoutPanel() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {addresses.map((item: any) => {
+                    {addresses.map((item) => {
                       const selected = item.id === selectedAddressId;
                       const expanded = item.id === expandedAddressId;
 
@@ -812,6 +997,76 @@ export function CheckoutPanel() {
                         Make selected address default
                       </button>
                     )}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Shipping
+                  </p>
+                  <h2 className="mt-1 text-xl font-extrabold text-gray-900">
+                    Choose shipping method
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Select the delivery service for this order.
+                  </p>
+                </div>
+
+                {!shippingMethods.length ? (
+                  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5 text-sm text-gray-500">
+                    No shipping methods are configured yet. The store will apply
+                    shipping during order processing.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {shippingMethods.map((method) => {
+                      const selected = method.id === selectedShippingMethodId;
+
+                      return (
+                        <button
+                          key={method.id}
+                          type="button"
+                          onClick={() => setSelectedShippingMethodId(method.id)}
+                          className={`w-full rounded-3xl border p-4 text-left transition ${
+                            selected
+                              ? 'border-emerald-600 bg-emerald-50'
+                              : 'border-gray-200 bg-gray-50 hover:bg-white'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-extrabold text-gray-900">
+                                  {method.name}
+                                </p>
+                                {selected ? (
+                                  <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white">
+                                    Selected
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {method.description ? (
+                                <p className="mt-1 text-sm text-gray-500">
+                                  {method.description}
+                                </p>
+                              ) : null}
+
+                              <p className="mt-2 text-xs font-semibold text-gray-500">
+                                Estimated {method.estimated_days} day
+                                {method.estimated_days === 1 ? '' : 's'}
+                              </p>
+                            </div>
+
+                            <p className="whitespace-nowrap text-sm font-extrabold text-gray-900">
+                              {formatCurrency(method.fee)}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1005,6 +1260,63 @@ export function CheckoutPanel() {
                   ) : null}
                 </div>
 
+                <form
+                  onSubmit={handleApplyCoupon}
+                  className="mt-5 border-t border-gray-200 pt-4"
+                >
+                  <label
+                    htmlFor="coupon-code"
+                    className="text-xs font-semibold uppercase tracking-wide text-gray-500"
+                  >
+                    Coupon
+                  </label>
+
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      id="coupon-code"
+                      className="min-w-0 flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-emerald-500"
+                      value={couponCode}
+                      onChange={(event) => {
+                        setCouponCode(event.target.value.toUpperCase());
+                        setCouponError('');
+                      }}
+                      placeholder="Enter code"
+                      disabled={applyingCoupon || Boolean(appliedCoupon)}
+                    />
+
+                    {appliedCoupon ? (
+                      <button
+                        type="button"
+                        onClick={removeCoupon}
+                        className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
+                      >
+                        Remove
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={applyingCoupon || !items.length}
+                        className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {applyingCoupon ? 'Applying...' : 'Apply'}
+                      </button>
+                    )}
+                  </div>
+
+                  {appliedCoupon ? (
+                    <p className="mt-2 text-xs font-semibold text-emerald-700">
+                      {appliedCoupon.code} applied. You saved{' '}
+                      {formatCurrency(discountAmount)}.
+                    </p>
+                  ) : null}
+
+                  {couponError ? (
+                    <p className="mt-2 text-xs font-semibold text-red-600">
+                      {couponError}
+                    </p>
+                  ) : null}
+                </form>
+
                 <div className="mt-5 space-y-3 border-t border-gray-200 pt-4">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500">Items</span>
@@ -1024,11 +1336,48 @@ export function CheckoutPanel() {
                       {getPaymentLabel(paymentProvider)}
                     </span>
                   </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Shipping method</span>
+                    <span className="max-w-[180px] truncate text-right font-bold text-gray-900">
+                      {selectedShippingMethod?.name || 'Not selected'}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="mt-4 border-t border-gray-200 pt-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-500">Total</span>
+                <div className="mt-4 space-y-3 border-t border-gray-200 pt-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Subtotal</span>
+                    <span className="font-bold text-gray-900">
+                      {formatCurrency(subtotal)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Discount</span>
+                    <span className="font-bold text-emerald-700">
+                      -{formatCurrency(discountAmount)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Tax</span>
+                    <span className="font-bold text-gray-900">
+                      {formatCurrency(taxAmount)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">Shipping</span>
+                    <span className="font-bold text-gray-900">
+                      {formatCurrency(shippingFee)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+                    <span className="text-sm font-semibold text-gray-500">
+                      Total
+                    </span>
                     <span className="text-2xl font-extrabold text-gray-900">
                       {formatCurrency(total)}
                     </span>

@@ -1,12 +1,14 @@
-import './globals.css';
+﻿import './globals.css';
 import { Providers } from '@/components/ui/providers';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Analytics } from '@/components/analytics/analytics';
-import { Toaster } from 'sonner'; // ✅ add this
+import { Toaster } from 'sonner';
+
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://app.example.com';
 
 export const metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
+  metadataBase: new URL(siteUrl),
   title: {
     default: 'GoCart',
     template: '%s | GoCart',
@@ -34,7 +36,6 @@ export default function RootLayout({
           <main className="container-page min-h-screen">{children}</main>
           <Footer />
 
-          {/* ✅ Toast mounted globally */}
           <Toaster
             position="top-right"
             richColors

@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { authApi } from '@/lib/api/services';
+import { authApi, getApiErrorMessage } from '@/lib/api/services';
 
 export function ResetPasswordForm() {
   const router = useRouter();
@@ -40,12 +40,8 @@ export function ResetPasswordForm() {
 
       setSuccess('Password reset successful.');
       router.push('/auth/login');
-    } catch (err: any) {
-      setError(
-        err?.message ||
-          err?.response?.data?.detail ||
-          'Could not reset password.'
-      );
+    } catch (error: unknown) {
+      setError(getApiErrorMessage(error, 'Could not reset password.'));
     } finally {
       setBusy(false);
     }

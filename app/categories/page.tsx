@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import { catalogApi } from '@/lib/api/services';
 import { ProductCard } from '@/components/products/product-card';
@@ -117,11 +116,10 @@ export default async function CategoriesPage({
                     }`}
                   >
                     <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-[#F3F4F6]">
-                      <Image
+                      <img
                         src={getCategoryImage(category)}
                         alt={category.name || 'Category'}
-                        fill
-                        className="object-cover"
+                        className="h-full w-full object-cover"
                       />
                     </div>
 
