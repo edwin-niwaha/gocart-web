@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -314,12 +313,10 @@ export default function WishlistPage() {
                 <Link href={`/products/${slug}`} className="block">
                   <div className="relative h-56 w-full overflow-hidden bg-slate-100">
                     {image ? (
-                      <Image
+                      <img
                         src={image}
                         alt={title}
-                        fill
-                        className="object-cover transition duration-500 group-hover:scale-[1.03]"
-                        unoptimized
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
                       />
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-100">

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useEffect, useMemo, useCallback, useState } from 'react';
@@ -17,7 +17,9 @@ import {
   User,
   X,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
+import { canUseStorefrontShopping, getActiveMembership } from '@/lib/auth/roles';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { useTenant } from '@/app/providers/TenantProvider';
 import { getBrandPalette } from '@/lib/tenant/theme';
@@ -27,8 +29,9 @@ import { CART_UPDATED_EVENT } from '@/lib/cart-events';
 type NavLinkItem = {
   href: string;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   authOnly?: boolean;
+  shopperOnly?: boolean;
 };
 
 function CountBadge({ count }: { count: number }) {
@@ -49,7 +52,7 @@ function IconAction({
   onClick,
 }: {
   href?: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   label: string;
   count?: number;
   onClick?: () => void;
@@ -81,7 +84,7 @@ function DesktopNavLink({
 }: {
   href: string;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   active: boolean;
 }) {
   return (
@@ -108,7 +111,7 @@ function MobileNavLink({
 }: {
   href: string;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   active: boolean;
   onNavigate: () => void;
 }) {
@@ -128,11 +131,30 @@ function MobileNavLink({
   );
 }
 
+function formatRoleLabel(value: string | null | undefined) {
+  if (!value) return null;
+
+  return value
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatTenantLabel(value: string | null | undefined) {
+  if (!value) return null;
+
+  return value
+    .trim()
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const { user, hydrated, logout, canAccessDashboard } = useAuthStore();
+  const { user, hydrated, logout, canAccessDashboard, currentRole } =
+    useAuthStore();
   const tenant = useTenant();
   const palette = getBrandPalette(tenant?.branding);
 
@@ -143,17 +165,34 @@ export function Header() {
   const [loadingCounts, setLoadingCounts] = useState(false);
 
   const appName = tenant?.branding?.app_name || 'GoCart';
-  const slogan = 'Shop • Sell • Deliver';
+  const slogan = 'Shop - Sell - Deliver';
   const dashboardAllowed = canAccessDashboard();
   const isAuthenticated = Boolean(user);
+  const canShop = canUseStorefrontShopping(user);
+  const activeMembership = getActiveMembership(user);
+  const signedInRoleLabel = formatRoleLabel(currentRole() || user?.user_type);
+  const signedInTenantLabel = formatTenantLabel(
+    activeMembership?.tenant_name || activeMembership?.tenant_slug
+  );
 
   const navLinks = useMemo<NavLinkItem[]>(
     () => [
       { href: '/', label: 'Home', icon: Store },
       { href: '/products', label: 'Shop', icon: Package },
-      { href: '/cart', label: 'Cart', icon: ShoppingCart },
-      { href: '/support', label: 'Support', icon: Headphones },
-      { href: '/account', label: 'Account', icon: User, authOnly: true },
+      { href: '/cart', label: 'Cart', icon: ShoppingCart, shopperOnly: true },
+      {
+        href: '/support',
+        label: 'Support',
+        icon: Headphones,
+        shopperOnly: true,
+      },
+      {
+        href: '/account',
+        label: 'Account',
+        icon: User,
+        authOnly: true,
+        shopperOnly: true,
+      },
     ],
     []
   );
@@ -167,12 +206,21 @@ export function Header() {
     () =>
       navLinks.filter((link) => {
         if (link.authOnly && !isAuthenticated) return false;
+        if (link.shopperOnly && !canShop) return false;
         return true;
       }),
-    [navLinks, isAuthenticated]
+    [canShop, navLinks, isAuthenticated]
   );
 
   const loadCounts = useCallback(async () => {
+    if (!hydrated) return;
+
+    if (!canShop) {
+      setCartCount(0);
+      setOrdersCount(0);
+      return;
+    }
+
     try {
       setLoadingCounts(true);
 
@@ -190,22 +238,22 @@ export function Header() {
 
       const orders = await orderApi.list();
       setOrdersCount(orders.length);
-    } catch (error) {
-      console.error('Failed to load header counts:', error);
+    } catch {
       setCartCount(0);
       setOrdersCount(0);
     } finally {
       setLoadingCounts(false);
     }
-  }, [user]);
+  }, [canShop, hydrated, user]);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
   useEffect(() => {
+    if (!hydrated) return;
     loadCounts();
-  }, [loadCounts, pathname]);
+  }, [hydrated, loadCounts, pathname]);
 
   useEffect(() => {
     const handleCartUpdated = () => {
@@ -286,14 +334,16 @@ export function Header() {
           </form>
 
           <div className="ml-auto flex items-center gap-2">
-            <IconAction
-              href="/cart"
-              icon={ShoppingCart}
-              label={loadingCounts ? 'Loading cart' : 'Cart'}
-              count={cartCount}
-            />
+            {canShop ? (
+              <IconAction
+                href="/cart"
+                icon={ShoppingCart}
+                label={loadingCounts ? 'Loading cart' : 'Cart'}
+                count={cartCount}
+              />
+            ) : null}
 
-            {isAuthenticated ? (
+            {isAuthenticated && canShop ? (
               <IconAction
                 href="/account/orders"
                 icon={Receipt}
@@ -305,12 +355,21 @@ export function Header() {
             {hydrated ? (
               isAuthenticated ? (
                 <>
-                  <Link
-                    href="/account"
-                    className="hidden rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 lg:inline-flex"
-                  >
-                    My Account
-                  </Link>
+                  {canShop ? (
+                    <Link
+                      href="/account"
+                      className="hidden rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 lg:inline-flex"
+                    >
+                      My Account
+                    </Link>
+                  ) : dashboardAllowed ? (
+                    <Link
+                      href="/dashboard"
+                      className="hidden rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 lg:inline-flex"
+                    >
+                      Dashboard
+                    </Link>
+                  ) : null}
 
                   <button
                     type="button"
@@ -373,6 +432,12 @@ export function Header() {
                 <span className="font-semibold text-white">
                   {user?.first_name || user?.username || 'User'}
                 </span>
+                {signedInRoleLabel ? (
+                  <span className="text-white/55"> ({signedInRoleLabel})</span>
+                ) : null}
+                {signedInTenantLabel ? (
+                  <span className="text-white/55"> for {signedInTenantLabel}</span>
+                ) : null}
               </div>
             ) : (
               <div className="text-sm text-white/70">
@@ -430,14 +495,25 @@ export function Header() {
                 {hydrated ? (
                   isAuthenticated ? (
                     <div className="flex flex-col gap-2">
-                      <Link
-                        href="/account"
-                        onClick={() => setMobileOpen(false)}
-                        className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-                      >
-                        <User size={18} />
-                        My Account
-                      </Link>
+                      {canShop ? (
+                        <Link
+                          href="/account"
+                          onClick={() => setMobileOpen(false)}
+                          className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+                        >
+                          <User size={18} />
+                          My Account
+                        </Link>
+                      ) : dashboardAllowed ? (
+                        <Link
+                          href="/dashboard"
+                          onClick={() => setMobileOpen(false)}
+                          className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+                        >
+                          <LayoutDashboard size={18} />
+                          Dashboard
+                        </Link>
+                      ) : null}
 
                       <button
                         type="button"

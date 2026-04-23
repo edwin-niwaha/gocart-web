@@ -4,11 +4,14 @@ export type ResourceFieldType =
   | 'number'
   | 'select'
   | 'boolean'
+  | 'checkbox'
   | 'date'
   | 'image'
+  | 'json'
   | 'email'
   | 'password'
-  | 'readonly';
+  | 'readonly'
+  | (string & {});
 
 export type SelectOption = {
   label: string;
@@ -31,7 +34,7 @@ export interface ResourceField {
 export type ResourceAction<T> = {
   label: string;
   tone?: 'primary' | 'secondary' | 'danger' | string;
-  onClick: (item: T) => Promise<void> | void;
+  onClick: (item: T) => Promise<unknown> | unknown;
 };
 
 export type AdminResourceConfig<T extends Record<string, any>> = {

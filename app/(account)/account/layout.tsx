@@ -17,12 +17,13 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/auth-store';
 
 type AccountLink = {
   href: string;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
 };
 
 const accountLinks: AccountLink[] = [

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -18,12 +18,13 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/auth-store';
 
 type DashboardLink = {
   href: string;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   show: boolean;
 };
 
@@ -175,7 +176,7 @@ export default function DashboardLayout({
   };
 
   if (!hydrated || loading) {
-    return <div className="py-16 text-center text-slate-500">Loading dashboard…</div>;
+    return <div className="py-16 text-center text-slate-500">Loading dashboard...</div>;
   }
 
   return (
@@ -292,3 +293,4 @@ export default function DashboardLayout({
     </div>
   );
 }
+

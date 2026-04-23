@@ -13,7 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import { addressApi } from '@/lib/api/services';
+import { addressApi, getApiErrorMessage } from '@/lib/api/services';
 import type { CustomerAddress, CustomerAddressPayload } from '@/lib/types';
 import { showError, showInfo, showSuccess } from '@/lib/toast';
 
@@ -59,26 +59,6 @@ const EMPTY_FORM: AddressFormValues = {
   is_default: false,
 };
 
-function getErrorMessage(error: any, fallback: string) {
-  const data = error?.response?.data;
-
-  if (typeof data === 'string') return data;
-  if (data?.detail) return String(data.detail);
-  if (data?.message) return String(data.message);
-
-  if (typeof data === 'object' && data !== null) {
-    const firstValue = Object.values(data)[0];
-    if (Array.isArray(firstValue) && firstValue.length > 0) {
-      return String(firstValue[0]);
-    }
-    if (typeof firstValue === 'string') {
-      return firstValue;
-    }
-  }
-
-  return fallback;
-}
-
 function getRegionLabel(region?: string) {
   return (
     REGION_OPTIONS.find((option) => option.value === region)?.label ||
@@ -109,7 +89,7 @@ export default function AddressesPage() {
       setAddresses(Array.isArray(data) ? data : []);
     } catch (error: any) {
       setAddresses([]);
-      showError(getErrorMessage(error, 'Failed to load addresses.'));
+      showError(getApiErrorMessage(error, 'Failed to load addresses.'));
     } finally {
       setLoading(false);
     }
@@ -216,7 +196,7 @@ export default function AddressesPage() {
 
       closeModal();
     } catch (error: any) {
-      showError(getErrorMessage(error, 'Failed to save address.'));
+      showError(getApiErrorMessage(error, 'Failed to save address.'));
     } finally {
       setSaving(false);
     }
@@ -235,7 +215,7 @@ export default function AddressesPage() {
       setAddresses((prev) => prev.filter((item) => item.id !== address.id));
       showSuccess('Address deleted successfully.');
     } catch (error: any) {
-      showError(error?.message || getErrorMessage(error, 'Failed to delete address.'));
+      showError(getApiErrorMessage(error, 'Failed to delete address.'));
     } finally {
       setDeletingId(null);
     }
@@ -248,7 +228,7 @@ export default function AddressesPage() {
       await loadAddresses();
       showSuccess('Default address updated.');
     } catch (error: any) {
-      showError(getErrorMessage(error, 'Failed to set default address.'));
+      showError(getApiErrorMessage(error, 'Failed to set default address.'));
     } finally {
       setDefaultingId(null);
     }

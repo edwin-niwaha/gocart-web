@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api/services';
+import { canAccessDashboardUser } from '@/lib/auth/roles';
 import { useAuthStore } from '@/lib/stores/auth-store';
 
 export default function GoogleCallbackPage() {
@@ -45,7 +46,7 @@ export default function GoogleCallbackPage() {
 
         setMessage('Login successful. Redirecting...');
 
-        if (user.user_type === 'ADMIN') {
+        if (canAccessDashboardUser(user)) {
           router.replace('/dashboard');
         } else {
           router.replace('/account/orders');

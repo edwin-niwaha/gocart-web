@@ -66,21 +66,23 @@ export default function Page() {
           helpText: 'Example: ["https://a.jpg", "https://b.jpg"]',
         },
         {
-          name: 'price',
-          label: 'Price',
+          name: 'base_price',
+          label: 'Base price',
           type: 'number' as const,
           required: true,
         },
         {
-          name: 'stock_quantity',
-          label: 'Stock quantity',
-          type: 'number' as const,
+          name: 'variants',
+          label: 'Variants JSON array',
+          type: 'json' as const,
           required: true,
+          helpText:
+            'Example: [{"name":"Default","sku":"SKU-001","price":10000,"stock_quantity":10,"is_active":true}]',
         },
         {
-          name: 'max_quantity_per_order',
-          label: 'Max quantity per order',
-          type: 'number' as const,
+          name: 'is_featured',
+          label: 'Featured product',
+          type: 'checkbox' as const,
         },
         {
           name: 'category_id',

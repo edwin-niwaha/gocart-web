@@ -7,14 +7,19 @@ const config = {
   title: 'Order Items',
   singular: 'Order Item',
   idKey: 'id',
-  description: 'Attach products to existing orders.',
+  description: 'View order line items captured at checkout.',
   list: adminApi.orderItems,
-  create: adminApi.createOrderItem,
-  update: adminApi.updateOrderItem,
-  remove: adminApi.removeOrderItem,
+  create: undefined,
+  update: undefined,
+  remove: undefined,
   actions: undefined,
-  readOnly: false,
-  fields: [{ name: 'order', label: 'Order ID', type: 'number' }, { name: 'product', label: 'Product ID', type: 'number' }, { name: 'quantity', label: 'Quantity', type: 'number' }],
+  readOnly: true,
+  fields: [
+    { name: 'order', label: 'Order ID', type: 'readonly' },
+    { name: 'product_title', label: 'Product', type: 'readonly' },
+    { name: 'quantity', label: 'Quantity', type: 'readonly' },
+    { name: 'line_total', label: 'Line total', type: 'readonly' },
+  ],
 };
 
 export default function Page() {

@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bell, BellRing, CheckCheck, ChevronRight, Loader2 } from 'lucide-react';
-import { notificationApi, type PaginatedResponse } from '@/lib/api/services';
+import {
+  getApiErrorMessage,
+  notificationApi,
+  type PaginatedResponse,
+} from '@/lib/api/services';
 import type { Notification } from '@/lib/types';
 
 export default function NotificationsPage() {
@@ -59,12 +63,11 @@ export default function NotificationsPage() {
 
       const response = await notificationApi.list();
       applyResponse(response, 'replace');
-    } catch (error: any) {
-      console.error('Failed to load notifications:', error);
+    } catch (error: unknown) {
       setItems([]);
       setCount(0);
       setNextUrl(null);
-      setError('Failed to load notifications.');
+      setError(getApiErrorMessage(error, 'Failed to load notifications.'));
     } finally {
       setLoading(false);
     }
@@ -81,9 +84,8 @@ export default function NotificationsPage() {
 
       const response = await notificationApi.list();
       applyResponse(response, 'replace');
-    } catch (error: any) {
-      console.error('Failed to refresh notifications:', error);
-      setError('Failed to refresh notifications.');
+    } catch (error: unknown) {
+      setError(getApiErrorMessage(error, 'Failed to refresh notifications.'));
     } finally {
       setRefreshing(false);
     }
@@ -98,9 +100,8 @@ export default function NotificationsPage() {
 
       const response = await notificationApi.list(nextUrl);
       applyResponse(response, 'append');
-    } catch (error: any) {
-      console.error('Failed to load more notifications:', error);
-      setError('Failed to load more notifications.');
+    } catch (error: unknown) {
+      setError(getApiErrorMessage(error, 'Failed to load more notifications.'));
     } finally {
       setLoadingMore(false);
     }
@@ -124,8 +125,8 @@ export default function NotificationsPage() {
             : item
         )
       );
-    } catch (error: any) {
-      console.error(`Failed to mark notification ${id} as read:`, error);
+    } catch (error: unknown) {
+      setError(getApiErrorMessage(error, 'Failed to mark notification as read.'));
     } finally {
       setMarkingIds((prev) => prev.filter((itemId) => itemId !== id));
     }
@@ -145,8 +146,8 @@ export default function NotificationsPage() {
           read_at: item.read_at ?? new Date().toISOString(),
         }))
       );
-    } catch (error: any) {
-      console.error('Failed to mark all notifications as read:', error);
+    } catch (error: unknown) {
+      setError(getApiErrorMessage(error, 'Failed to mark all notifications as read.'));
     } finally {
       setMarkingAll(false);
     }

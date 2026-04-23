@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, CheckCircle2, Mail, ShieldAlert, UploadCloud, User2 } from 'lucide-react';
 
@@ -162,12 +161,10 @@ export default function ProfilePage() {
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <div className="relative h-24 w-24 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
               {avatarSrc ? (
-                <Image
+                <img
                   src={avatarSrc}
                   alt="Profile photo"
-                  fill
-                  className="object-cover"
-                  unoptimized
+                  className="h-full w-full object-cover"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-slate-100">

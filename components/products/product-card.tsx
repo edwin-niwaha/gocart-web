@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { Heart, ShoppingCart, Star, Eye, ImageIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { canUseStorefrontShopping } from '@/lib/auth/roles';
 import type { Product } from '@/lib/types';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import { formatCurrency } from '@/lib/utils';
 import { cartApi, wishlistApi } from '@/lib/api/services';
 import { showError, showInfo, showSuccess } from '@/lib/toast';
@@ -86,9 +88,11 @@ function resolveProductImage(product: any) {
 }
 
 export function ProductCard({ product }: { product: Product }) {
+  const user = useAuthStore((state) => state.user);
   const safePrice = Number(product?.base_price ?? (product as any)?.price ?? 0);
   const rating = Number((product as any)?.average_rating ?? 0);
   const reviews = Number((product as any)?.total_reviews ?? 0);
+  const canShop = canUseStorefrontShopping(user);
 
   const [addingCart, setAddingCart] = useState(false);
   const [addingWishlist, setAddingWishlist] = useState(false);
@@ -109,6 +113,13 @@ export function ProductCard({ product }: { product: Product }) {
 
   async function handleAddToCart() {
     try {
+      if (!canShop) {
+        showInfo(
+          'Store management accounts cannot use the customer cart. Open the dashboard or sign in with a customer account to shop.'
+        );
+        return;
+      }
+
       if (!firstAvailableVariant) {
         showError('This product is currently unavailable.');
         return;
@@ -119,6 +130,8 @@ export function ProductCard({ product }: { product: Product }) {
       await cartApi.addItem({
         variant_id: (firstAvailableVariant as any).id,
         quantity: 1,
+        product,
+        variant: firstAvailableVariant,
       });
 
       showSuccess('Added to cart');

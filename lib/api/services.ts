@@ -3,19 +3,32 @@ import {
   clearTokens,
   getAccessToken,
   getRefreshToken,
+  getTenantSlug,
   normalizeList,
   setTokens,
 } from './client';
 import { notifyCartUpdated } from '@/lib/cart-events';
+import {
+  addGuestCartItem,
+  clearGuestCart,
+  hasGuestCartItems,
+  isGuestCartItemId,
+  listGuestCartItems,
+  listGuestCartSyncItems,
+  removeGuestCartItem,
+  retainGuestCartItems,
+  updateGuestCartItem,
+} from '@/lib/cart/guest-cart';
+import { IDEMPOTENCY_KEY_HEADER } from '@/lib/security/idempotency';
 import type {
-  Address,
-  AddressPayload,
   AuthResponse,
   Cart,
   CartItem,
   Category,
   Coupon,
   CouponValidation,
+  CustomerAddress,
+  CustomerAddressPayload,
   Inventory,
   InventoryMovement,
   Notification,
@@ -25,6 +38,7 @@ import type {
   PaymentPayload,
   Product,
   ProductRating,
+  ProductVariant,
   Review,
   Shipment,
   ShipmentPayload,
@@ -54,6 +68,17 @@ export type PaginatedResponse<T> =
     };
 
 export type ListResponse<T> = T[] | { results: T[] };
+export type ApiListParams = {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  ordering?: string;
+  is_active?: boolean;
+  [key: string]: unknown;
+};
+type MutationOptions = {
+  idempotencyKey?: string;
+};
 
 export function isPaginatedResponse<T>(
   data: PaginatedResponse<T>
@@ -66,62 +91,254 @@ export function isPaginatedResponse<T>(
   return !Array.isArray(data) && Array.isArray(data.results);
 }
 
-function compactObject<T extends Record<string, unknown>>(obj: T): Partial<T> {
+function compactObject<T extends object>(obj: T): Partial<T> {
   return Object.fromEntries(
     Object.entries(obj).filter(([, value]) => value !== undefined)
   ) as Partial<T>;
 }
 
-function getApiErrorMessage(error: any, fallback: string): string {
-  const data = error?.response?.data;
+type ApiErrorPayload =
+  | string
+  | string[]
+  | {
+      detail?: unknown;
+      message?: unknown;
+      error?: unknown;
+      errors?: unknown;
+      non_field_errors?: unknown;
+      [key: string]: unknown;
+    };
 
-  if (!data) return fallback;
-
-  if (typeof data.detail === 'string') return data.detail;
-  if (typeof data.message === 'string') return data.message;
-
-  if (Array.isArray(data.non_field_errors) && data.non_field_errors[0]) {
-    return String(data.non_field_errors[0]);
+function getObjectValue(value: unknown, key: string): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
   }
 
-  if (data && typeof data === 'object') {
-    const firstValue = Object.values(data)[0];
+  return (value as Record<string, unknown>)[key];
+}
 
-    if (Array.isArray(firstValue) && firstValue[0]) {
-      return String(firstValue[0]);
-    }
+function firstMessage(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) {
+    return value;
+  }
 
-    if (typeof firstValue === 'string') {
-      return firstValue;
-    }
+  if (Array.isArray(value) && value.length > 0) {
+    return firstMessage(value[0]);
+  }
 
-    try {
-      return JSON.stringify(data);
-    } catch {
-      return fallback;
+  if (value && typeof value === 'object') {
+    for (const candidate of Object.values(value as Record<string, unknown>)) {
+      const message = firstMessage(candidate);
+      if (message) return message;
     }
+  }
+
+  return null;
+}
+
+function isGenericAxiosStatusMessage(message: string): boolean {
+  return /^Request failed with status code \d+$/i.test(message.trim());
+}
+
+function getResponseData(error: unknown): ApiErrorPayload | null {
+  if (!error || typeof error !== 'object' || !('response' in error)) {
+    return null;
+  }
+
+  const response = (error as { response?: { data?: unknown } }).response;
+  return (response?.data as ApiErrorPayload | undefined) ?? null;
+}
+
+export function getApiErrorMessage(
+  error: unknown,
+  fallback = 'Something went wrong.'
+): string {
+  const data = getResponseData(error);
+
+  if (typeof data === 'string' && data.trim()) {
+    return data;
+  }
+
+  if (Array.isArray(data) && data.length > 0) {
+    const message = firstMessage(data);
+    if (message) return message;
+  }
+
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const explicitMessage = firstMessage(data.message);
+    if (explicitMessage) return explicitMessage;
+
+    const nestedErrorMessage = firstMessage(
+      getObjectValue(data.error, 'message')
+    );
+    if (nestedErrorMessage) return nestedErrorMessage;
+
+    const detailMessage = firstMessage(data.detail);
+    if (detailMessage) return detailMessage;
+
+    const nonFieldMessage = firstMessage(data.non_field_errors);
+    if (nonFieldMessage) return nonFieldMessage;
+
+    const nestedDetailsMessage = firstMessage(
+      getObjectValue(data.error, 'details')
+    );
+    if (nestedDetailsMessage) return nestedDetailsMessage;
+
+    const errorMessage = firstMessage(data.error);
+    if (errorMessage) return errorMessage;
+
+    const errorsMessage = firstMessage(data.errors);
+    if (errorsMessage) return errorsMessage;
+
+    const fieldMessage = firstMessage(data);
+    if (fieldMessage) return fieldMessage;
+  }
+
+  if (
+    error instanceof Error &&
+    error.message.trim() &&
+    !isGenericAxiosStatusMessage(error.message)
+  ) {
+    return error.message;
   }
 
   return fallback;
 }
 
+function getResourceTenantSlug(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+
+  const tenantSlug = (value as { tenant_slug?: unknown }).tenant_slug;
+  if (typeof tenantSlug !== 'string' || !tenantSlug.trim()) return null;
+
+  return tenantSlug.trim().toLowerCase();
+}
+
+function assertTenantScopedResource(value: unknown, url: string) {
+  const expectedTenantSlug = getTenantSlug();
+  if (!expectedTenantSlug) return;
+
+  const returnedTenantSlug = getResourceTenantSlug(value);
+  if (!returnedTenantSlug || returnedTenantSlug === expectedTenantSlug) return;
+
+  throw new Error(
+    `Refused ${url} response because it belongs to a different tenant.`
+  );
+}
+
+function assertTenantScopedList<T>(items: T[], url: string): T[] {
+  items.forEach((item) => assertTenantScopedResource(item, url));
+  return items;
+}
+
+async function syncGuestCartToServer() {
+  if (!getAccessToken()) return;
+
+  const pendingItems = listGuestCartSyncItems();
+  if (!pendingItems.length) return;
+
+  const failedIds: number[] = [];
+  let syncedCount = 0;
+
+  for (const item of pendingItems) {
+    try {
+      await postOne<CartItem>('/cart-items/', {
+        variant_id: item.variant_id,
+        quantity: item.quantity,
+      });
+      syncedCount += 1;
+    } catch {
+      failedIds.push(item.id);
+    }
+  }
+
+  if (failedIds.length) {
+    retainGuestCartItems(failedIds);
+  } else {
+    clearGuestCart();
+  }
+
+  if (syncedCount > 0) {
+    notifyCartUpdated();
+  }
+}
+
+function buildGuestCart(): Cart {
+  const items = listGuestCartItems();
+  const totalItems = items.reduce(
+    (sum, item) => sum + Number(item.quantity ?? 0),
+    0
+  );
+  const totalPrice = items.reduce(
+    (sum, item) => sum + Number(item.line_total ?? 0),
+    0
+  );
+  const timestamp = new Date().toISOString();
+
+  return {
+    id: 0,
+    user: 0,
+    items,
+    total_items: totalItems,
+    total_price: String(totalPrice),
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+}
+
 async function getList<T>(url: string, params?: Record<string, unknown>): Promise<T[]> {
   const { data } = await api.get<ListResponse<T>>(url, { params });
-  return normalizeList(data);
+  return assertTenantScopedList(normalizeList<T>(data), url);
+}
+
+async function getPaginatedList<T>(
+  url: string,
+  params?: Record<string, unknown>
+): Promise<PaginatedResponse<T>> {
+  const { data } = await api.get<PaginatedResponse<T>>(url, { params });
+
+  if (Array.isArray(data)) {
+    return assertTenantScopedList(data, url);
+  }
+
+  if (isPaginatedResponse(data)) {
+    return {
+      ...data,
+      results: assertTenantScopedList(data.results, url),
+    };
+  }
+
+  return {
+    count: 0,
+    next: null,
+    previous: null,
+    results: [],
+  };
 }
 
 async function getOne<T>(url: string): Promise<T> {
   const { data } = await api.get<T>(url);
+  assertTenantScopedResource(data, url);
   return data;
 }
 
-async function postOne<T>(url: string, payload?: unknown): Promise<T> {
-  const { data } = await api.post<T>(url, payload);
+async function postOne<T>(
+  url: string,
+  payload?: unknown,
+  options?: MutationOptions
+): Promise<T> {
+  const { data } = await api.post<T>(url, payload, {
+    headers: options?.idempotencyKey
+      ? { [IDEMPOTENCY_KEY_HEADER]: options.idempotencyKey }
+      : undefined,
+  });
+  assertTenantScopedResource(data, url);
   return data;
 }
 
 async function patchOne<T>(url: string, payload?: unknown): Promise<T> {
   const { data } = await api.patch<T>(url, payload);
+  assertTenantScopedResource(data, url);
   return data;
 }
 
@@ -134,23 +351,45 @@ async function deleteOne<T = unknown>(url: string): Promise<T> {
  * Query / domain types
  * ========================================================================== */
 
-type ProductQueryParams = {
+export type ProductQueryParams = ApiListParams & {
   category?: string | number;
   is_featured?: boolean;
+};
+
+export type CategoryQueryParams = ApiListParams & {
+  parent?: string | number;
+};
+
+export type VariantQueryParams = ApiListParams & {
+  product?: number | string;
+  product_slug?: string;
+  sku?: string;
+};
+
+export type ProductVariantPayload = {
+  product?: number;
+  product_slug?: string;
+  name: string;
+  sku: string;
+  price: string | number;
+  stock_quantity?: number;
+  max_quantity_per_order?: number | null;
   is_active?: boolean;
-  search?: string;
-  ordering?: string;
+  sort_order?: number;
 };
 
-type ReviewQueryParams = {
+type ReviewQueryParams = ApiListParams & {
+  product?: number | string;
+  product_slug?: string;
+  rating?: number;
+};
+
+type RatingQueryParams = ApiListParams & {
   product?: number;
+  product_slug?: string;
 };
 
-type RatingQueryParams = {
-  product?: number;
-};
-
-type ReviewOrParams = number | ReviewQueryParams;
+type ReviewOrParams = number | string | ReviewQueryParams;
 type RatingOrParams = number | RatingQueryParams;
 
 export const PAYMENT_STATUSES = [
@@ -204,6 +443,45 @@ export type ContactPayload = {
   subject?: string;
 };
 
+export type CheckoutPayload = {
+  address_id: number;
+  payment_method?: string;
+  shipping_method_id?: number;
+  coupon_code?: string;
+};
+
+export type CheckoutSummary = {
+  items?: CartItem[];
+  subtotal: string | number;
+  discount: string | number;
+  tax: string | number;
+  shipping: string | number;
+  total: string | number;
+  currency?: string;
+  coupon_code?: string | null;
+  shipping_method_id?: number | null;
+};
+
+export type DashboardSummary = {
+  orders?: number;
+  revenue?: string | number;
+  customers?: number;
+  products?: number;
+  low_stock_items?: number;
+  pending_support_messages?: number;
+  [key: string]: unknown;
+};
+
+export type TenantCurrentResponse = {
+  id?: number;
+  name?: string;
+  slug?: string;
+  tenant_slug?: string;
+  branding?: TenantBranding | null;
+  settings?: TenantSettings | null;
+  feature_flags?: TenantFeatureFlag[];
+};
+
 /* ============================================================================
  * Auth
  * ========================================================================== */
@@ -217,12 +495,14 @@ export const authApi = {
   }) => {
     const data = await postOne<AuthResponse>('/auth/register/', payload);
     setTokens(data.tokens.access, data.tokens.refresh);
+    await syncGuestCartToServer();
     return data;
   },
 
   login: async (payload: { email: string; password: string }) => {
     const data = await postOne<AuthResponse>('/auth/login/', payload);
     setTokens(data.tokens.access, data.tokens.refresh);
+    await syncGuestCartToServer();
     return data;
   },
 
@@ -231,6 +511,7 @@ export const authApi = {
       access_token,
     });
     setTokens(data.tokens.access, data.tokens.refresh);
+    await syncGuestCartToServer();
     return data;
   },
 
@@ -307,11 +588,17 @@ export const catalogApi = {
   products: async (params?: ProductQueryParams) =>
     getList<Product>('/products/', params),
 
+  productsPage: async (params?: ProductQueryParams) =>
+    getPaginatedList<Product>('/products/', params),
+
   product: async (slug: string) =>
     getOne<Product>(`/products/${slug}/`),
 
-  categories: async () =>
-    getList<Category>('/categories/'),
+  categories: async (params?: CategoryQueryParams) =>
+    getList<Category>('/categories/', params),
+
+  categoriesPage: async (params?: CategoryQueryParams) =>
+    getPaginatedList<Category>('/categories/', params),
 
   category: async (slug: string) =>
     getOne<Category>(`/categories/${slug}/`),
@@ -320,6 +607,8 @@ export const catalogApi = {
     const params =
       typeof productOrParams === 'number'
         ? { product: productOrParams }
+        : typeof productOrParams === 'string'
+        ? { product_slug: productOrParams }
         : productOrParams;
 
     return getList<Review>('/reviews/', params);
@@ -347,37 +636,116 @@ export const commonApi = {
 };
 
 /* ============================================================================
+ * Variants
+ * ========================================================================== */
+
+export const variantApi = {
+  list: async (params?: VariantQueryParams) =>
+    getList<ProductVariant>('/variants/', params),
+
+  listPage: async (params?: VariantQueryParams) =>
+    getPaginatedList<ProductVariant>('/variants/', params),
+
+  byProduct: async (product: number | string) => {
+    const params =
+      typeof product === 'number'
+        ? { product }
+        : { product_slug: product };
+
+    return getList<ProductVariant>('/variants/', params);
+  },
+
+  detail: async (id: number | string) =>
+    getOne<ProductVariant>(`/variants/${id}/`),
+
+  create: async (payload: ProductVariantPayload) =>
+    postOne<ProductVariant>('/variants/', payload),
+
+  update: async (
+    id: number | string,
+    payload: Partial<ProductVariantPayload>
+  ) => patchOne<ProductVariant>(`/variants/${id}/`, payload),
+
+  remove: async (id: number | string) =>
+    deleteOne(`/variants/${id}/`),
+};
+
+/* ============================================================================
  * Cart
  * ========================================================================== */
 
 export const cartApi = {
   async ensure() {
+    if (!getAccessToken()) {
+      return buildGuestCart();
+    }
+
+    await syncGuestCartToServer();
+
     try {
-      return await postOne<Cart>('/carts/', {});
+      return await postOne<Cart>('/cart/', {});
     } catch {
-      const carts = await getList<Cart>('/carts/');
+      const carts = await getList<Cart>('/cart/');
       return carts[0];
     }
   },
 
   async listItems() {
+    if (!getAccessToken()) {
+      return listGuestCartItems();
+    }
+
+    await syncGuestCartToServer();
+
     try {
-      return await getList<CartItem>('/cart-items/');
-    } catch (error: any) {
-      console.log('GET /cart-items/ error:', error?.response?.data || error.message);
+      const serverItems = await getList<CartItem>('/cart-items/');
+      if (!hasGuestCartItems()) {
+        return serverItems;
+      }
+
+      return [...serverItems, ...listGuestCartItems()];
+    } catch (error: unknown) {
+      const guestItems = listGuestCartItems();
+      if (guestItems.length) {
+        return guestItems;
+      }
+
       throw new Error(
         getApiErrorMessage(error, 'Failed to load cart items.')
       );
     }
   },
 
-  async addItem(payload: { variant_id: number; quantity: number }) {
-    try {
-      const data = await postOne<CartItem>('/cart-items/', payload);
+  async addItem(payload: {
+    variant_id: number;
+    quantity: number;
+    product?: Product;
+    variant?: ProductVariant;
+  }) {
+    if (!getAccessToken()) {
+      if (!payload.product || !payload.variant) {
+        throw new Error('Product details are required for guest cart items.');
+      }
+
+      const data = addGuestCartItem({
+        product: payload.product,
+        quantity: payload.quantity,
+        variant: payload.variant,
+      });
       notifyCartUpdated();
       return data;
-    } catch (error: any) {
-      console.log('POST /cart-items/ error:', error?.response?.data || error.message);
+    }
+
+    await syncGuestCartToServer();
+
+    try {
+      const data = await postOne<CartItem>('/cart-items/', {
+        variant_id: payload.variant_id,
+        quantity: payload.quantity,
+      });
+      notifyCartUpdated();
+      return data;
+    } catch (error: unknown) {
       throw new Error(getApiErrorMessage(error, 'Failed to add item to cart.'));
     }
   },
@@ -386,29 +754,45 @@ export const cartApi = {
     id: number,
     payload: { quantity?: number; variant_id?: number }
   ) {
+    if (isGuestCartItemId(id) || !getAccessToken()) {
+      try {
+        const data = updateGuestCartItem(id, payload.quantity);
+        notifyCartUpdated();
+        return data;
+      } catch (error: unknown) {
+        throw new Error(
+          getApiErrorMessage(error, 'Failed to update cart item.')
+        );
+      }
+    }
+
     try {
       const data = await patchOne<CartItem>(`/cart-items/${id}/`, payload);
       notifyCartUpdated();
       return data;
-    } catch (error: any) {
-      console.log(
-        `PATCH /cart-items/${id}/ error:`,
-        error?.response?.data || error.message
-      );
+    } catch (error: unknown) {
       throw new Error(getApiErrorMessage(error, 'Failed to update cart item.'));
     }
   },
 
   async removeItem(id: number) {
+    if (isGuestCartItemId(id) || !getAccessToken()) {
+      try {
+        removeGuestCartItem(id);
+        notifyCartUpdated();
+        return { success: true };
+      } catch (error: unknown) {
+        throw new Error(
+          getApiErrorMessage(error, 'Failed to remove cart item.')
+        );
+      }
+    }
+
     try {
       await deleteOne(`/cart-items/${id}/`);
       notifyCartUpdated();
       return { success: true };
-    } catch (error: any) {
-      console.log(
-        `DELETE /cart-items/${id}/ error:`,
-        error?.response?.data || error.message
-      );
+    } catch (error: unknown) {
       throw new Error(getApiErrorMessage(error, 'Failed to remove cart item.'));
     }
   },
@@ -501,24 +885,32 @@ export const wishlistApi = {
   getOrCreate: async () =>
     postOne<Wishlist>('/wishlist/', {}),
 
-  listItems: async () =>
-    getList<WishlistItem>('/wishlist-items/'),
+  current: async () =>
+    getOne<Wishlist>('/wishlist/current/'),
+
+  listItems: async (params?: ApiListParams) =>
+    getList<WishlistItem>('/wishlist-items/', params),
+
+  listItemsPage: async (params?: ApiListParams) =>
+    getPaginatedList<WishlistItem>('/wishlist-items/', params),
 
   addItem: async (payload: { product_id: number }) => {
     try {
       return await postOne<WishlistItem>('/wishlist-items/', payload);
-    } catch (error) {
-      console.error('wishlistApi.addItem failed:', error);
-      throw error;
+    } catch (error: unknown) {
+      throw new Error(
+        getApiErrorMessage(error, 'Failed to add item to wishlist.')
+      );
     }
   },
 
   removeItem: async (id: number) => {
     try {
       return await deleteOne(`/wishlist-items/${id}/`);
-    } catch (error) {
-      console.error('wishlistApi.removeItem failed:', error);
-      throw error;
+    } catch (error: unknown) {
+      throw new Error(
+        getApiErrorMessage(error, 'Failed to remove item from wishlist.')
+      );
     }
   },
 };
@@ -534,22 +926,51 @@ export type CheckoutResponse = {
   payment_provider?: string | null;
 };
 
+export const checkoutApi = {
+  summary: async (params?: {
+    address_id?: number;
+    shipping_method_id?: number;
+    coupon_code?: string;
+  }) => {
+    const { data } = await api.get<CheckoutSummary>('/checkout/summary/', {
+      params: compactObject(params ?? {}),
+    });
+    assertTenantScopedResource(data, '/checkout/summary/');
+    return data;
+  },
+
+  validate: async (payload: Partial<CheckoutPayload>) =>
+    postOne<CheckoutSummary>('/checkout/validate/', payload),
+
+  submit: async (
+    payload: CheckoutPayload,
+    options?: MutationOptions
+  ) => postOne<CheckoutResponse>('/orders/checkout/', payload, options),
+};
+
 export const orderApi = {
-  list: async () =>
-    getList<Order>('/orders/'),
+  list: async (params?: ApiListParams) =>
+    getList<Order>('/orders/', params),
+
+  listPage: async (params?: ApiListParams) =>
+    getPaginatedList<Order>('/orders/', params),
 
   detail: async (slug: string) =>
     getOne<Order>(`/orders/${slug}/`),
 
-  checkout: async (payload: {
-    address_id: number;
-    payment_method?: string;
-    shipping_method_id?: number;
-    coupon_code?: string;
-  }) => postOne<CheckoutResponse>('/orders/checkout/', payload),
+  checkout: checkoutApi.submit,
 
   update: async (slug: string, payload: Record<string, unknown>) =>
     patchOne<Order>(`/orders/${slug}/`, payload),
+
+  cancel: async (slug: string, payload?: { reason?: string }) =>
+    postOne<Order>(`/orders/${slug}/cancel/`, payload ?? {}),
+
+  requestRefund: async (slug: string, payload?: { reason?: string }) =>
+    postOne<Order>(`/orders/${slug}/refund/`, payload ?? {}),
+
+  remove: async (slug: string) =>
+    deleteOne(`/orders/${slug}/`),
 
   removeItem: async (id: number) =>
     deleteOne(`/orders/${id}/`),
@@ -560,50 +981,38 @@ export const orderApi = {
  * ========================================================================== */
 
 export const notificationApi = {
-  async list(url?: string): Promise<PaginatedResponse<Notification>> {
+  async list(
+    urlOrParams?: string | ApiListParams
+  ): Promise<PaginatedResponse<Notification>> {
     try {
-      const endpoint = url ?? '/notifications/';
-      const { data } = await api.get<PaginatedResponse<Notification>>(endpoint);
-
-      if (Array.isArray(data)) return data;
-      if (isPaginatedResponse(data)) return data;
-
-      return {
-        count: 0,
-        next: null,
-        previous: null,
-        results: [],
-      };
-    } catch (error: any) {
-      console.log(
-        `GET ${url ?? '/notifications/'} error:`,
-        error?.response?.data || error.message
+      const endpoint =
+        typeof urlOrParams === 'string' ? urlOrParams : '/notifications/';
+      const params = typeof urlOrParams === 'object' ? urlOrParams : undefined;
+      return await getPaginatedList<Notification>(endpoint, params);
+    } catch (error: unknown) {
+      throw new Error(
+        getApiErrorMessage(error, 'Failed to load notifications.')
       );
-      throw error;
     }
   },
 
   async markRead(id: number): Promise<Notification> {
     try {
       return await postOne<Notification>(`/notifications/${id}/mark_read/`);
-    } catch (error: any) {
-      console.log(
-        `POST /notifications/${id}/mark_read/ error:`,
-        error?.response?.data || error.message
+    } catch (error: unknown) {
+      throw new Error(
+        getApiErrorMessage(error, 'Failed to mark notification as read.')
       );
-      throw error;
     }
   },
 
   async markAllRead() {
     try {
       return await postOne('/notifications/mark_all_read/');
-    } catch (error: any) {
-      console.log(
-        'POST /notifications/mark_all_read/ error:',
-        error?.response?.data || error.message
+    } catch (error: unknown) {
+      throw new Error(
+        getApiErrorMessage(error, 'Failed to mark notifications as read.')
       );
-      throw error;
     }
   },
 };
@@ -613,30 +1022,39 @@ export const notificationApi = {
  * ========================================================================== */
 
 export const couponApi = {
-  list: async () =>
-    getList<Coupon>('/coupons/'),
+  list: async (params?: ApiListParams) =>
+    getList<Coupon>('/coupons/', params),
+
+  listPage: async (params?: ApiListParams) =>
+    getPaginatedList<Coupon>('/coupons/', params),
 
   validate: async (payload: { code: string; amount: string | number }) =>
     postOne<CouponValidation>('/coupons/validate/', payload),
 };
 
 export const inventoryApi = {
-  list: async () =>
-    getList<Inventory>('/inventory/'),
+  list: async (params?: ApiListParams) =>
+    getList<Inventory>('/inventory/', params),
 
-  movements: async () =>
-    getList<InventoryMovement>('/inventory-movements/'),
+  listPage: async (params?: ApiListParams) =>
+    getPaginatedList<Inventory>('/inventory/', params),
+
+  movements: async (params?: ApiListParams) =>
+    getList<InventoryMovement>('/inventory-movements/', params),
 };
 
 export const addressApi = {
-  list: async () =>
-    getList<Address>('/addresses/'),
+  list: async (params?: ApiListParams) =>
+    getList<CustomerAddress>('/addresses/', params),
 
-  create: async (payload: AddressPayload) =>
-    postOne<Address>('/addresses/', payload),
+  detail: async (id: number | string) =>
+    getOne<CustomerAddress>(`/addresses/${id}/`),
 
-  update: async (id: number, payload: Partial<AddressPayload>) =>
-    patchOne<Address>(`/addresses/${id}/`, payload),
+  create: async (payload: CustomerAddressPayload) =>
+    postOne<CustomerAddress>('/addresses/', payload),
+
+  update: async (id: number, payload: Partial<CustomerAddressPayload>) =>
+    patchOne<CustomerAddress>(`/addresses/${id}/`, payload),
 
   remove: async (id: number) =>
     deleteOne(`/addresses/${id}/`),
@@ -646,38 +1064,67 @@ export const addressApi = {
  * Payments (customer)
  * ========================================================================== */
 
+export interface InitiateMTNResponse {
+  reference: string;
+  external_id?: string;
+  status?: PaymentStatus | string;
+  amount?: string | number;
+  currency?: string;
+}
+
+export interface PaymentStatusResponse {
+  reference: string;
+  provider: PaymentProvider | string;
+  status: PaymentStatus | string;
+  amount?: string | number;
+  currency?: string;
+  phone_number?: string;
+  external_id?: string | null;
+  transaction_id?: string | null;
+  provider_response?: Record<string, unknown> | null;
+  paid_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface FinalizeOrderResponse {
+  order: Order;
+  payment_reference?: string | null;
+}
+
 export const paymentApi = {
-  list: async () => {
+  list: async (params?: PaymentListParams) => {
     try {
-      return await getList<Payment>('/payments/');
-    } catch (error: any) {
-      console.log('GET /payments/ error:', error?.response?.data || error.message);
+      return await getList<Payment>('/payments/', compactObject(params ?? {}));
+    } catch (error: unknown) {
       throw new Error(getApiErrorMessage(error, 'Failed to load payments.'));
     }
   },
 
+  listPage: async (params?: PaymentListParams & ApiListParams) =>
+    getPaginatedList<Payment>('/payments/', compactObject(params ?? {})),
+
   create: async (payload: PaymentPayload) => {
     try {
       return await postOne<Payment>('/payments/', payload);
-    } catch (error: any) {
-      console.log('POST /payments/ error:', error?.response?.data || error.message);
+    } catch (error: unknown) {
       throw new Error(getApiErrorMessage(error, 'Failed to create payment.'));
     }
   },
 
-  initiateMTN: async (payload: {
-    address_id?: number;
-    order?: number;
-    phone_number: string;
-  }) => {
+  initiateMTN: async (
+    payload: {
+      address_id?: number;
+      order?: number;
+      phone_number: string;
+      shipping_method_id?: number;
+      coupon_code?: string;
+    },
+    options?: MutationOptions
+  ): Promise<InitiateMTNResponse> => {
     try {
-      return await postOne('/payments/mtn/initiate/', payload);
-    } catch (error: any) {
-      console.log(
-        'POST /payments/mtn/initiate/ error:',
-        error?.response?.data || error.message
-      );
-
+      return await postOne('/payments/mtn/initiate/', payload, options);
+    } catch (error: unknown) {
       throw new Error(
         getApiErrorMessage(
           error,
@@ -687,15 +1134,10 @@ export const paymentApi = {
     }
   },
 
-  checkStatus: async (reference: string) => {
+  checkStatus: async (reference: string): Promise<PaymentStatusResponse> => {
     try {
       return await getOne(`/payments/${reference}/status/`);
-    } catch (error: any) {
-      console.log(
-        `GET /payments/${reference}/status/ error:`,
-        error?.response?.data || error.message
-      );
-
+    } catch (error: unknown) {
       throw new Error(
         getApiErrorMessage(
           error,
@@ -705,15 +1147,17 @@ export const paymentApi = {
     }
   },
 
-  finalizeOrder: async (reference: string) => {
+  finalizeOrder: async (
+    reference: string,
+    options?: MutationOptions
+  ): Promise<FinalizeOrderResponse> => {
     try {
-      return await postOne(`/payments/${reference}/finalize-order/`);
-    } catch (error: any) {
-      console.log(
-        `POST /payments/${reference}/finalize-order/ error:`,
-        error?.response?.data || error.message
+      return await postOne(
+        `/payments/${reference}/finalize-order/`,
+        undefined,
+        options
       );
-
+    } catch (error: unknown) {
       const message = getApiErrorMessage(error, '');
 
       if (message.toLowerCase().includes('still being confirmed')) {
@@ -725,6 +1169,21 @@ export const paymentApi = {
       throw new Error(message || 'Failed to finalize paid order.');
     }
   },
+
+  cancel: async (reference: string, payload?: { reason?: string }) =>
+    postOne<PaymentStatusResponse>(
+      `/payments/${reference}/cancel/`,
+      payload ?? {}
+    ),
+
+  refund: async (
+    reference: string,
+    payload?: { amount?: string | number; reason?: string }
+  ) =>
+    postOne<PaymentStatusResponse>(
+      `/payments/${reference}/refund/`,
+      payload ?? {}
+    ),
 };
 
 /* ============================================================================
@@ -732,11 +1191,14 @@ export const paymentApi = {
  * ========================================================================== */
 
 export const shippingApi = {
-  methods: async () =>
-    getList<ShippingMethod>('/shipping-methods/'),
+  methods: async (params?: ApiListParams) =>
+    getList<ShippingMethod>('/shipping-methods/', params),
 
-  shipments: async () =>
-    getList<Shipment>('/shipments/'),
+  shipments: async (params?: ApiListParams) =>
+    getList<Shipment>('/shipments/', params),
+
+  shipment: async (id: number | string) =>
+    getOne<Shipment>(`/shipments/${id}/`),
 
   createShipment: async (payload: ShipmentPayload) =>
     postOne<Shipment>('/shipments/', payload),
@@ -747,7 +1209,7 @@ export const shippingApi = {
  * ========================================================================== */
 
 export const tenantApi = {
-  current: async () => getOne('/tenants/current/'),
+  current: async () => getOne<TenantCurrentResponse>('/tenants/current/'),
 
   branding: async () =>
     getOne<TenantBranding>('/tenants/current/branding/'),
@@ -785,11 +1247,37 @@ export const supportApi = {
   create: async (payload: ContactPayload) =>
     postOne<{ detail: string; id?: number }>('/contact/', payload),
 
-  list: async () =>
-    getList<SupportMessage>('/support-messages/'),
+  contact: async (payload: ContactPayload) =>
+    postOne<{ detail: string; id?: number }>('/contact/', payload),
+
+  list: async (params?: ApiListParams) =>
+    getList<SupportMessage>('/support-messages/', params),
+
+  listPage: async (params?: ApiListParams) =>
+    getPaginatedList<SupportMessage>('/support-messages/', params),
+
+  detail: async (id: number | string) =>
+    getOne<SupportMessage>(`/support-messages/${id}/`),
+
+  createTicket: async (payload: ContactPayload) =>
+    postOne<SupportMessage>('/support-messages/', payload),
 
   update: async (id: number, payload: Partial<SupportMessage>) =>
     patchOne<SupportMessage>(`/support-messages/${id}/`, payload),
+};
+
+/* ============================================================================
+ * Admin dashboard
+ * ========================================================================== */
+
+export const dashboardApi = {
+  summary: async (params?: ApiListParams) => {
+    const { data } = await api.get<DashboardSummary>('/admin/dashboard/summary/', {
+      params,
+    });
+    assertTenantScopedResource(data, '/admin/dashboard/summary/');
+    return data;
+  },
 };
 
 /* ============================================================================
@@ -914,6 +1402,12 @@ export const adminApi = {
   removeProduct: async (slug: string) =>
     deleteOne(`/products/${slug}/`),
 
+  variants: variantApi.list,
+  variantsPage: variantApi.listPage,
+  createVariant: variantApi.create,
+  updateVariant: variantApi.update,
+  removeVariant: variantApi.remove,
+
   /* orders */
   orders: async () =>
     getList<Order>('/orders/'),
@@ -921,6 +1415,10 @@ export const adminApi = {
     patchOne<Order>(`/orders/${slug}/`, payload),
   transitionOrder: async (slug: string, status: string) =>
     postOne<Order>(`/orders/${slug}/transition-status/`, { status }),
+  cancelOrder: orderApi.cancel,
+  requestOrderRefund: orderApi.requestRefund,
+
+  dashboardSummary: dashboardApi.summary,
 
   /* payments */
   payments: adminPaymentsApi.list,
@@ -947,7 +1445,7 @@ export const adminApi = {
   removeCoupon: async (id: number) =>
     deleteOne(`/coupons/${id}/`),
 
-  notifications: notificationApi.list,
+  notifications: async () => normalizeList<Notification>(await notificationApi.list()),
   createNotification: async (payload: Record<string, unknown>) =>
     postOne<Notification>('/notifications/', payload),
   updateNotification: async (id: number, payload: Record<string, unknown>) =>
@@ -974,16 +1472,16 @@ export const adminApi = {
     getList<WishlistItem>('/wishlist-items/'),
 
   carts: async () =>
-    getList<Cart>('/carts/'),
+    getList<Cart>('/cart/'),
   cartItems: cartApi.listItems,
 
   orderItems: async () =>
     getList<OrderItem>('/order-items/'),
 
   createCart: async () =>
-    postOne<Cart>('/carts/', {}),
+    postOne<Cart>('/cart/', {}),
   removeCart: async (id: number) =>
-    deleteOne(`/carts/${id}/`),
+    deleteOne(`/cart/${id}/`),
 
   createCartItem: async (payload: { variant_id: number; quantity: number }) =>
     postOne<CartItem>('/cart-items/', payload),
@@ -1029,10 +1527,10 @@ export const adminApi = {
   removeWishlistItem: async (id: number) =>
     deleteOne(`/wishlist-items/${id}/`),
 
-  createAddress: async (payload: AddressPayload) =>
-    postOne<Address>('/addresses/', payload),
+  createAddress: async (payload: CustomerAddressPayload) =>
+    postOne<CustomerAddress>('/addresses/', payload),
   updateAddress: async (id: number, payload: Record<string, unknown>) =>
-    patchOne<Address>(`/addresses/${id}/`, payload),
+    patchOne<CustomerAddress>(`/addresses/${id}/`, payload),
   removeAddress: async (id: number) =>
     deleteOne(`/addresses/${id}/`),
 

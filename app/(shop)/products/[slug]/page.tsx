@@ -13,8 +13,10 @@ import {
   Star,
   Tag,
 } from 'lucide-react';
+import { canUseStorefrontShopping } from '@/lib/auth/roles';
 import { cartApi, catalogApi, wishlistApi } from '@/lib/api/services';
-import type { Product, Review } from '@/lib/types';
+import { useAuthStore } from '@/lib/stores/auth-store';
+import type { Product, Review, WishlistItem } from '@/lib/types';
 import { formatCurrency, getImage } from '@/lib/utils';
 import { showError, showSuccess } from '@/lib/toast';
 
@@ -127,6 +129,21 @@ function getInitialVariant(variants: ProductVariant[]) {
   );
 }
 
+function findWishlistItemForProduct(
+  items: WishlistItem[],
+  product: Product
+): WishlistItem | null {
+  return (
+    items.find((item: any) => {
+      const itemProduct = item?.product;
+      return (
+        itemProduct?.id === product.id ||
+        (product.slug && itemProduct?.slug === product.slug)
+      );
+    }) ?? null
+  );
+}
+
 function RatingStars({ rating, size = 18 }: { rating: number; size?: number }) {
   const rounded = Math.round(rating);
 
@@ -203,6 +220,7 @@ export default function ProductDetailPage({
 }: {
   params: { slug: string };
 }) {
+  const user = useAuthStore((state) => state.user);
   const [product, setProduct] = useState<Product | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
 
@@ -217,6 +235,7 @@ export default function ProductDetailPage({
   const [addingCart, setAddingCart] = useState(false);
   const [addingWishlist, setAddingWishlist] = useState(false);
   const [wished, setWished] = useState(false);
+  const [wishlistItemId, setWishlistItemId] = useState<number | null>(null);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(true);
 
@@ -317,6 +336,37 @@ export default function ProductDetailPage({
     });
   }, [activeVariants]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadWishlistStatus() {
+      if (!product?.id) {
+        setWished(false);
+        setWishlistItemId(null);
+        return;
+      }
+
+      try {
+        const items = await wishlistApi.listItems();
+        if (!mounted) return;
+
+        const existingItem = findWishlistItemForProduct(items, product);
+        setWished(Boolean(existingItem));
+        setWishlistItemId(existingItem?.id ?? null);
+      } catch {
+        if (!mounted) return;
+        setWished(false);
+        setWishlistItemId(null);
+      }
+    }
+
+    loadWishlistStatus();
+
+    return () => {
+      mounted = false;
+    };
+  }, [product]);
+
   const productImages = useMemo(() => {
     return dedupeImageUrls([product?.hero_image, ...(product?.image_urls || [])]);
   }, [product]);
@@ -341,9 +391,17 @@ export default function ProductDetailPage({
   const selectedOptionName = selectedVariant?.name || 'Default';
   const description = product?.description || 'No description provided.';
   const hasVariants = activeVariants.length > 0;
+  const canShop = canUseStorefrontShopping(user);
 
   const handleAddToCart = async () => {
     if (!product || addingCart) return;
+
+    if (!canShop) {
+      showError(
+        'Store management accounts cannot use the customer cart. Open the dashboard or sign in with a customer account to shop.'
+      );
+      return;
+    }
 
     if (hasVariants && !selectedVariant) {
       showError('Please choose an option before adding this item to cart.');
@@ -371,6 +429,8 @@ export default function ProductDetailPage({
       await cartApi.addItem({
         variant_id: selectedVariant.id,
         quantity: Math.max(1, quantity),
+        product,
+        variant: selectedVariant,
       });
 
       showSuccess('Added to cart');
@@ -388,13 +448,18 @@ export default function ProductDetailPage({
       setAddingWishlist(true);
 
       if (wished) {
-        if (typeof wishlistApi.removeItem === 'function') {
-          await wishlistApi.removeItem(product.id);
+        if (!wishlistItemId) {
+          showError('Could not find this wishlist item. Please refresh and try again.');
+          return;
         }
+
+        await wishlistApi.removeItem(wishlistItemId);
+        setWishlistItemId(null);
         setWished(false);
         showSuccess('Removed from wishlist');
       } else {
-        await wishlistApi.addItem({ product_id: product.id });
+        const created = await wishlistApi.addItem({ product_id: product.id });
+        setWishlistItemId(created?.id ?? null);
         setWished(true);
         showSuccess('Added to wishlist');
       }
