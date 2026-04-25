@@ -23,6 +23,7 @@ export interface ResourceField {
   label: string;
   type: ResourceFieldType;
   required?: boolean;
+  preserveEmpty?: boolean;
   placeholder?: string;
   helpText?: string;
   options?: SelectOption[];

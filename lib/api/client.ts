@@ -13,12 +13,13 @@ import {
   LEGACY_ACCESS_KEY,
   LEGACY_REFRESH_KEY,
 } from '@/lib/security/token-storage';
+import { getApiBaseUrl } from '@/lib/env';
 
 const TENANT_OVERRIDE_KEY = 'gocart_tenant_slug_override';
 const API_PREFIX = '/api/v1';
 
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? '';
+  getApiBaseUrl();
 export const API_ROOT = API_BASE_URL ? `${API_BASE_URL}${API_PREFIX}` : API_PREFIX;
 
 const APP_ENV = process.env.NEXT_PUBLIC_APP_ENV ?? process.env.NODE_ENV;

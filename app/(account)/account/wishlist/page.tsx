@@ -13,24 +13,12 @@ import {
 } from 'lucide-react';
 
 import { wishlistApi } from '@/lib/api/services';
+import { toAbsoluteMediaUrl as resolveAbsoluteMediaUrl } from '@/lib/env';
 import { formatCurrency } from '@/lib/utils';
 import { showError, showInfo, showSuccess } from '@/lib/toast';
 
 function toAbsoluteMediaUrl(url?: string | null) {
-  if (!url) return null;
-
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
-  }
-
-  const base =
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    '';
-
-  if (!base) return url;
-
-  return `${base.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
+  return resolveAbsoluteMediaUrl(url);
 }
 
 function getProductTitle(item: any) {

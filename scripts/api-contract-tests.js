@@ -41,6 +41,7 @@ for (const snippet of [
   'refund: async',
   'dashboardSummary',
   '/variants/',
+  '/delivery-rates/',
   '/checkout/validate/',
   '/checkout/summary/',
   '/admin/dashboard/summary/',

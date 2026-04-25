@@ -199,6 +199,8 @@ export type OrderStatus =
   | 'FAILED'
   | string;
 
+export type DeliveryOption = 'HOME_DELIVERY' | 'PICKUP_STATION';
+
 export type Order = {
   id: number;
   tenant?: number | null;
@@ -207,6 +209,22 @@ export type Order = {
   user: number;
   user_email: string;
   status: OrderStatus;
+  delivery_option?: DeliveryOption;
+  pickup_station_id?: number | null;
+  pickup_station_name?: string;
+  pickup_station_city?: string;
+  pickup_station_area?: string;
+  pickup_station_address?: string;
+  pickup_station_phone?: string;
+  pickup_station_opening_hours?: string;
+  address_street_name?: string;
+  address_city?: string;
+  address_area?: string;
+  address_region?: string;
+  address_additional_information?: string;
+  items_subtotal?: string;
+  discount_amount?: string;
+  shipping_fee?: string;
   description: string;
   total_price: string;
   items: OrderItem[];
@@ -386,11 +404,60 @@ export type ShippingMethod = {
   updated_at: string;
 };
 
+export type PickupStation = {
+  id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
+  name: string;
+  city: string;
+  area: string;
+  address: string;
+  phone?: string;
+  opening_hours?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type DeliveryRate = {
+  id: number;
+  tenant?: number | null;
+  tenant_slug?: string | null;
+  region: CustomerAddressRegion;
+  region_label?: string;
+  city: string;
+  area: string;
+  fee: string;
+  estimated_days: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type ShippingMethodPayload = {
   name: string;
   description: string;
   fee: string | number;
   estimated_days: number;
+  is_active: boolean;
+};
+
+export type DeliveryRatePayload = {
+  region: CustomerAddressRegion;
+  city?: string;
+  area?: string;
+  fee: string | number;
+  estimated_days: number;
+  is_active: boolean;
+};
+
+export type PickupStationPayload = {
+  name: string;
+  city: string;
+  area: string;
+  address: string;
+  phone?: string;
+  opening_hours?: string;
   is_active: boolean;
 };
 
@@ -492,6 +559,7 @@ export type CustomerAddress = {
   tenant_slug?: string | null;
   street_name: string;
   city: string;
+  area?: string;
   phone_number: string;
   additional_telephone?: string;
   additional_information?: string;
@@ -504,6 +572,7 @@ export type CustomerAddress = {
 export type CustomerAddressPayload = {
   street_name: string;
   city: string;
+  area?: string;
   phone_number?: string;
   additional_telephone?: string;
   additional_information?: string;

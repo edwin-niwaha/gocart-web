@@ -29,6 +29,8 @@ import type {
   CouponValidation,
   CustomerAddress,
   CustomerAddressPayload,
+  DeliveryRate,
+  DeliveryRatePayload,
   Inventory,
   InventoryMovement,
   Notification,
@@ -36,6 +38,8 @@ import type {
   OrderItem,
   Payment as BasePayment,
   PaymentPayload,
+  PickupStation,
+  PickupStationPayload,
   Product,
   ProductRating,
   ProductVariant,
@@ -445,21 +449,31 @@ export type ContactPayload = {
 
 export type CheckoutPayload = {
   address_id: number;
+  delivery_option?: 'HOME_DELIVERY' | 'PICKUP_STATION';
   payment_method?: string;
-  shipping_method_id?: number;
+  pickup_station_id?: number;
+  coupon_code?: string;
+};
+
+export type CheckoutSummaryRequest = {
+  address_id?: number;
+  delivery_option?: 'HOME_DELIVERY' | 'PICKUP_STATION';
+  pickup_station_id?: number;
   coupon_code?: string;
 };
 
 export type CheckoutSummary = {
-  items?: CartItem[];
-  subtotal: string | number;
+  items_subtotal: string | number;
   discount: string | number;
-  tax: string | number;
   shipping: string | number;
   total: string | number;
-  currency?: string;
+  delivery_option?: 'HOME_DELIVERY' | 'PICKUP_STATION';
+  coupon_id?: number | null;
   coupon_code?: string | null;
+  delivery_rate_id?: number | null;
+  estimated_days?: number | null;
   shipping_method_id?: number | null;
+  pickup_station_id?: number | null;
 };
 
 export type DashboardSummary = {
@@ -927,11 +941,7 @@ export type CheckoutResponse = {
 };
 
 export const checkoutApi = {
-  summary: async (params?: {
-    address_id?: number;
-    shipping_method_id?: number;
-    coupon_code?: string;
-  }) => {
+  summary: async (params?: CheckoutSummaryRequest) => {
     const { data } = await api.get<CheckoutSummary>('/checkout/summary/', {
       params: compactObject(params ?? {}),
     });
@@ -939,7 +949,7 @@ export const checkoutApi = {
     return data;
   },
 
-  validate: async (payload: Partial<CheckoutPayload>) =>
+  validate: async (payload: CheckoutSummaryRequest) =>
     postOne<CheckoutSummary>('/checkout/validate/', payload),
 
   submit: async (
@@ -1117,7 +1127,8 @@ export const paymentApi = {
       address_id?: number;
       order?: number;
       phone_number: string;
-      shipping_method_id?: number;
+      delivery_option?: 'HOME_DELIVERY' | 'PICKUP_STATION';
+      pickup_station_id?: number;
       coupon_code?: string;
     },
     options?: MutationOptions
@@ -1193,6 +1204,12 @@ export const paymentApi = {
 export const shippingApi = {
   methods: async (params?: ApiListParams) =>
     getList<ShippingMethod>('/shipping-methods/', params),
+
+  deliveryRates: async (params?: ApiListParams) =>
+    getList<DeliveryRate>('/delivery-rates/', params),
+
+  pickupStations: async (params?: ApiListParams) =>
+    getList<PickupStation>('/pickup-stations/', params),
 
   shipments: async (params?: ApiListParams) =>
     getList<Shipment>('/shipments/', params),
@@ -1461,6 +1478,8 @@ export const adminApi = {
   addresses: addressApi.list,
 
   shippingMethods: shippingApi.methods,
+  deliveryRates: shippingApi.deliveryRates,
+  pickupStations: shippingApi.pickupStations,
   shipments: shippingApi.shipments,
 
   reviews: catalogApi.reviews,
@@ -1543,6 +1562,24 @@ export const adminApi = {
     patchOne<ShippingMethod>(`/shipping-methods/${id}/`, payload),
   removeShippingMethod: async (id: number) =>
     deleteOne(`/shipping-methods/${id}/`),
+
+  createDeliveryRate: async (payload: DeliveryRatePayload) =>
+    postOne<DeliveryRate>('/delivery-rates/', payload),
+  updateDeliveryRate: async (
+    id: number,
+    payload: Partial<DeliveryRatePayload>
+  ) => patchOne<DeliveryRate>(`/delivery-rates/${id}/`, payload),
+  removeDeliveryRate: async (id: number) =>
+    deleteOne(`/delivery-rates/${id}/`),
+
+  createPickupStation: async (payload: PickupStationPayload) =>
+    postOne<PickupStation>('/pickup-stations/', payload),
+  updatePickupStation: async (
+    id: number,
+    payload: Partial<PickupStationPayload>
+  ) => patchOne<PickupStation>(`/pickup-stations/${id}/`, payload),
+  removePickupStation: async (id: number) =>
+    deleteOne(`/pickup-stations/${id}/`),
 
   createShipment: async (payload: ShipmentPayload) =>
     postOne<Shipment>('/shipments/', payload),

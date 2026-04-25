@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = process.cwd();
+const API_PREFIX = '/api/v1';
 const ENV_FILES = [
   '.env',
   '.env.local',
@@ -167,6 +168,29 @@ function validateUrl(key, { requireHttps = true } = {}) {
   }
 }
 
+function normalizeApiBaseUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    const pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+
+    if (pathname === API_PREFIX) {
+      warnings.push(
+        'NEXT_PUBLIC_API_BASE_URL should be the backend origin only. The app will strip /api/v1 automatically.'
+      );
+      parsed.pathname = '';
+    }
+
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return raw.replace(/\/api\/v1\/?$/i, '').replace(/\/$/, '');
+  }
+}
+
 requireValue('NEXT_PUBLIC_API_BASE_URL');
 requireValue('NEXT_PUBLIC_SITE_URL');
 
@@ -188,6 +212,7 @@ validateUrl('NEXT_PUBLIC_SITE_URL');
 validateTenantSlug('NEXT_PUBLIC_TENANT_SLUG');
 validateHostnameValue('NEXT_PUBLIC_TENANT_ROOT_DOMAIN');
 validateTenantDomainMap();
+normalizeApiBaseUrl(valueFor('NEXT_PUBLIC_API_BASE_URL'));
 
 const timeout = Number(valueFor('NEXT_PUBLIC_API_TIMEOUT_MS') || 15000);
 if (!Number.isFinite(timeout) || timeout < 1000 || timeout > 60000) {
@@ -209,6 +234,15 @@ if (isProduction && allowTenantOverride) {
 if (isProduction && !valueFor('NEXT_PUBLIC_IMAGE_HOSTNAMES')) {
   warnings.push(
     'NEXT_PUBLIC_IMAGE_HOSTNAMES is empty. Remote product images may be blocked.'
+  );
+}
+
+if (
+  valueFor('NEXT_PUBLIC_GOOGLE_CLIENT_ID') &&
+  isPlaceholder(valueFor('NEXT_PUBLIC_GOOGLE_CLIENT_ID'))
+) {
+  warnings.push(
+    'NEXT_PUBLIC_GOOGLE_CLIENT_ID still looks like a placeholder.'
   );
 }
 

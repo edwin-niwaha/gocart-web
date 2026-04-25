@@ -15,6 +15,7 @@ import {
 import { canUseStorefrontShopping } from '@/lib/auth/roles';
 import { cartApi, getApiErrorMessage } from '@/lib/api/services';
 import { CustomerSessionRequired } from '@/components/storefront/customer-session-required';
+import { resolveCartItemImage } from '@/lib/product-images';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import type { CartItem } from '@/lib/types';
 
@@ -74,13 +75,7 @@ export default function CartPage() {
   };
 
   const getItemImage = (item: CartItem) => {
-    return (
-      (item as any).product?.image ??
-      (item as any).product?.image_url ??
-      (item as any).product_variant?.image ??
-      (item as any).variant?.image ??
-      null
-    );
+    return resolveCartItemImage(item);
   };
 
   const getVariantLabel = (item: CartItem) => {
