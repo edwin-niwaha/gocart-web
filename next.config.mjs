@@ -1,7 +1,29 @@
 /** @type {import('next').NextConfig} */
+function normalizeApiBaseUrl(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+
+  try {
+    const url = new URL(raw);
+    const pathname = url.pathname.replace(/\/+$/, '') || '/';
+
+    if (pathname === '/api/v1') {
+      url.pathname = '';
+    }
+
+    url.search = '';
+    url.hash = '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return raw.replace(/\/api\/v1\/?$/i, '').replace(/\/$/, '');
+  }
+}
+
 const imageRemotePatterns = [
   process.env.NEXT_PUBLIC_IMAGE_HOSTNAMES,
-  process.env.NEXT_PUBLIC_API_BASE_URL,
+  normalizeApiBaseUrl(
+    process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL
+  ),
 ]
   .filter(Boolean)
   .flatMap((value) => String(value).split(','))
@@ -39,6 +61,9 @@ const nextConfig = {
   compress: true,
   reactStrictMode: true,
   images: {
+    // The app currently uses standard img tags, so disabling the optimizer
+    // reduces attack surface on self-hosted deployments.
+    unoptimized: true,
     remotePatterns: imageRemotePatterns.map(({ protocol, hostname, port }) => ({
       protocol,
       hostname,

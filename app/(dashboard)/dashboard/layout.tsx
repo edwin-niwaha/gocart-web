@@ -11,10 +11,12 @@ import {
   CreditCard,
   Flag,
   LayoutDashboard,
+  MapPin,
   Menu,
   Package,
   Palette,
   ShoppingCart,
+  Truck,
   Users,
   X,
 } from 'lucide-react';
@@ -84,6 +86,9 @@ export default function DashboardLayout({
       canManagePayments:
         isSuperAdmin || isTenantOwner || isTenantAdmin || isManager,
 
+      canManageShipping:
+        isSuperAdmin || isTenantOwner || isTenantAdmin || isManager,
+
       canManageSupport:
         isSuperAdmin ||
         isTenantOwner ||
@@ -130,6 +135,24 @@ export default function DashboardLayout({
         label: 'Payments',
         icon: CreditCard,
         show: permissions.canManagePayments,
+      },
+      {
+        href: '/dashboard/shipping-methods',
+        label: 'Shipping methods',
+        icon: Truck,
+        show: permissions.canManageShipping,
+      },
+      {
+        href: '/dashboard/delivery-rates',
+        label: 'Delivery rates',
+        icon: MapPin,
+        show: permissions.canManageShipping,
+      },
+      {
+        href: '/dashboard/pickup-stations',
+        label: 'Pickup stations',
+        icon: MapPin,
+        show: permissions.canManageShipping,
       },
       {
         href: '/dashboard/coupons',

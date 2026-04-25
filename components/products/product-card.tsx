@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Heart, ShoppingCart, Star, Eye, ImageIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { canUseStorefrontShopping } from '@/lib/auth/roles';
+import { toAbsoluteMediaUrl } from '@/lib/env';
 import type { Product } from '@/lib/types';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { formatCurrency } from '@/lib/utils';
@@ -52,20 +53,7 @@ function getErrorMessage(error: any, fallback: string) {
 }
 
 function toAbsoluteImageUrl(url?: string | null) {
-  if (!url) return null;
-
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
-  }
-
-  const base =
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    '';
-
-  if (!base) return url;
-
-  return `${base.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
+  return toAbsoluteMediaUrl(url);
 }
 
 function resolveProductImage(product: any) {

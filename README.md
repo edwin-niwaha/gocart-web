@@ -4,7 +4,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![License](https://img.shields.io/badge/license-GPLv3-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-14.2.35-000000?logo=nextdotjs&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.7.3-3178C6?logo=typescript&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=nodedotjs&logoColor=white)
 
 GoCart Web is a tenant-aware ecommerce frontend built with Next.js App Router, React, TypeScript, and Tailwind CSS. It provides a branded storefront, shopper account area, checkout flow, and an admin dashboard backed by the GoCart API.
@@ -60,10 +60,16 @@ git clone https://github.com/edwin-niwaha/gocart-web.git
 cd gocart-web
 ```
 
-2. Install dependencies.
+2. Install dependencies from the checked-in lockfile.
 
 ```bash
-npm install
+npm ci
+```
+
+If PowerShell blocks `npm`, use `npm.cmd` instead:
+
+```powershell
+npm.cmd ci
 ```
 
 3. Create a local environment file from the example template.
@@ -77,6 +83,7 @@ cp .env.example .env.local
 ```
 
 4. Update `.env.local` with values for your API, site URL, and tenant strategy.
+   The provided `.env.example` is safe for local development and uses `http://localhost:8000` for the GoCart backend plus `http://localhost:3000` for the site URL.
 
 5. Validate the environment before starting the app.
 
@@ -95,6 +102,8 @@ npm run dev
 ## Environment Configuration
 
 The frontend expects the GoCart API base origin and appends `/api/v1` internally. For example, set `NEXT_PUBLIC_API_BASE_URL=https://api.example.com`, not `https://api.example.com/api/v1`.
+
+If `/api/v1` is accidentally included, the app now strips it automatically for compatibility, but using the origin-only value is still recommended.
 
 For tenant resolution, configure at least one of the following:
 
@@ -119,6 +128,14 @@ For tenant resolution, configure at least one of the following:
 | `NEXT_PUBLIC_SITE_URL` | Yes | Public site URL used for metadata and canonical links |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Optional | Google OAuth client ID for Google sign-in |
 | `NEXT_PUBLIC_GA_ID` | Optional | Google Analytics identifier |
+
+### Production Checklist
+
+- Set `NEXT_PUBLIC_APP_ENV=production`
+- Use HTTPS values for `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_SITE_URL`
+- Keep `NEXT_PUBLIC_ALLOW_INSECURE_API=false`
+- Keep `NEXT_PUBLIC_ALLOW_TENANT_OVERRIDE=false`
+- Set `NEXT_PUBLIC_IMAGE_HOSTNAMES` to the remote image hosts your deployment should trust
 
 ### Example Local Configuration
 
@@ -149,6 +166,7 @@ NEXT_PUBLIC_GA_ID=
 | `npm run start` | Runs the production server after a successful build |
 | `npm run lint` | Runs the Next.js ESLint checks |
 | `npm run typecheck` | Runs TypeScript without emitting build artifacts |
+| `npm run type-check` | Alias for `typecheck` |
 | `npm test` | Runs the security and API contract test suites |
 | `npm run test:security` | Verifies security-sensitive client behaviors and idempotency helpers |
 | `npm run test:api` | Verifies exported API service contracts and expected endpoints |
@@ -198,6 +216,8 @@ docker build -t gocart-web .
 docker run --env-file .env.local -p 3000:3000 gocart-web
 ```
 
+The Docker image now uses `npm ci` for deterministic installs and disables Next telemetry in container builds/runs.
+
 ## Production Checks
 
 Run the full release gate before shipping:
@@ -207,6 +227,8 @@ npm run release:check
 ```
 
 This command validates environment settings, runs linting, performs a full typecheck, executes the custom security and API contract suites, and builds the production bundle.
+
+When validating a fresh local clone, make sure `.env.local` has been created from `.env.example` first; otherwise `npm run validate:env` will fail on missing local values by design.
 
 ## Contributing
 
@@ -222,3 +244,6 @@ Contributions are welcome. To keep changes easy to review and safe to release:
 ## License
 
 This project is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE) for details.
+
+npm run lint
+npm run build
