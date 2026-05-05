@@ -38,12 +38,14 @@ for (const snippet of [
   'submit: async',
   'cancel: async',
   'requestRefund',
+  'initiateCard',
   'refund: async',
   'dashboardSummary',
   '/variants/',
   '/delivery-rates/',
   '/checkout/validate/',
   '/checkout/summary/',
+  '/payments/card/initiate/',
   '/admin/dashboard/summary/',
 ]) {
   assert.ok(

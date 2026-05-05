@@ -409,11 +409,11 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export const PAYMENT_PROVIDERS = [
   'CASH',
+  'CARD',
   'STRIPE',
   'PAYSTACK',
   'FLUTTERWAVE',
   'MTN',
-  'AIRTEL',
 ] as const;
 
 export type PaymentProvider = (typeof PAYMENT_PROVIDERS)[number];
@@ -494,6 +494,31 @@ export type TenantCurrentResponse = {
   branding?: TenantBranding | null;
   settings?: TenantSettings | null;
   feature_flags?: TenantFeatureFlag[];
+};
+
+export type MembershipListParams = ApiListParams & {
+  status?: 'active' | 'inactive' | string;
+};
+
+export type TenantMembershipPayload = {
+  email: string;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  password?: string;
+  role: string;
+  is_active?: boolean;
+};
+
+export type TenantMembershipUpdatePayload = {
+  email?: string;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  password?: string;
+  role?: string;
+  is_active?: boolean;
+  user_is_active?: boolean;
 };
 
 /* ============================================================================
@@ -1082,6 +1107,29 @@ export interface InitiateMTNResponse {
   currency?: string;
 }
 
+export interface InitiateCardPayload {
+  address_id?: number;
+  order?: number;
+  delivery_option?: 'HOME_DELIVERY' | 'PICKUP_STATION';
+  pickup_station_id?: number;
+  coupon_code?: string;
+  gateway?: string;
+  cardholder_name: string;
+  card_last4: string;
+  expiry_month: number;
+  expiry_year: number;
+  billing_email?: string;
+  billing_phone?: string;
+}
+
+export interface InitiateCardResponse {
+  reference?: string;
+  checkout_url?: string | null;
+  status?: PaymentStatus | string;
+  amount?: string | number;
+  currency?: string;
+}
+
 export interface PaymentStatusResponse {
   reference: string;
   provider: PaymentProvider | string;
@@ -1140,6 +1188,24 @@ export const paymentApi = {
         getApiErrorMessage(
           error,
           'Failed to start MTN payment. Please check your number and try again.'
+        )
+      );
+    }
+  },
+
+  initiateCard: async (
+    payload: InitiateCardPayload,
+    options?: MutationOptions
+  ): Promise<InitiateCardResponse> => {
+    try {
+      // TODO: Backend must use a PCI-compliant gateway token/hosted checkout
+      // flow. This client must never send full PAN or CVV to GoCart servers.
+      return await postOne('/payments/card/initiate/', payload, options);
+    } catch (error: unknown) {
+      throw new Error(
+        getApiErrorMessage(
+          error,
+          'Failed to start card payment. Please try another payment method.'
         )
       );
     }
@@ -1246,14 +1312,25 @@ export const tenantApi = {
   createFeatureFlag: async (payload: Partial<TenantFeatureFlag>) =>
     postOne<TenantFeatureFlag>('/tenants/current/feature-flags/', payload),
 
-  memberships: async () =>
-    getList<TenantMembership>('/tenants/current/memberships/'),
+  memberships: async (params?: MembershipListParams) =>
+    getList<TenantMembership>('/tenants/current/memberships/', compactObject(params ?? {})),
 
-  createMembership: async (payload: Record<string, unknown>) =>
+  membershipsPage: async (params?: MembershipListParams) =>
+    getPaginatedList<TenantMembership>('/tenants/current/memberships/', compactObject(params ?? {})),
+
+  membership: async (id: number | string) =>
+    getOne<TenantMembership>(`/tenants/current/memberships/${id}/`),
+
+  createMembership: async (payload: TenantMembershipPayload) =>
     postOne<TenantMembership>('/tenants/current/memberships/', payload),
 
-  updateMembership: async (id: number | string, payload: Record<string, unknown>) =>
-    patchOne<TenantMembership>(`/tenants/current/memberships/${id}/`, payload),
+  updateMembership: async (
+    id: number | string,
+    payload: TenantMembershipUpdatePayload
+  ) => patchOne<TenantMembership>(`/tenants/current/memberships/${id}/`, compactObject(payload)),
+
+  deleteMembership: async (id: number | string) =>
+    deleteOne(`/tenants/current/memberships/${id}/`),
 };
 
 /* ============================================================================
@@ -1380,10 +1457,17 @@ const adminPaymentsApi = {
 
 export const adminApi = {
   /* users / tenant */
+  clients: tenantApi.memberships,
+  clientsPage: tenantApi.membershipsPage,
+  client: tenantApi.membership,
+  createClient: tenantApi.createMembership,
+  updateClient: tenantApi.updateMembership,
+  removeClient: tenantApi.deleteMembership,
   users: tenantApi.memberships,
   memberships: tenantApi.memberships,
   createMembership: tenantApi.createMembership,
   updateMembership: tenantApi.updateMembership,
+  deleteMembership: tenantApi.deleteMembership,
 
   branding: tenantApi.branding,
   updateBranding: tenantApi.updateBranding,

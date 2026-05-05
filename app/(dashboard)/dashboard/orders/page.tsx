@@ -3,50 +3,47 @@
 import { AdminResourceManager } from '@/components/dashboard/admin-resource-manager';
 import { adminApi } from '@/lib/api/services';
 
+const orderActions = [
+  ['Process', 'PROCESSING'],
+  ['Mark paid', 'PAID'],
+  ['Ship', 'SHIPPED'],
+  ['Deliver', 'DELIVERED'],
+] as const;
+
 const config = {
   title: 'Orders',
   singular: 'Order',
   idKey: 'slug',
-  description: 'View customer orders and move them through fulfillment.',
+  description: 'Track orders, payments, shipping, and delivery status.',
   list: adminApi.orders,
   create: undefined,
   update: undefined,
   remove: undefined,
+  readOnly: true,
+
   actions: [
-    {
-      label: 'Process',
-      onClick: (order: any) =>
-        adminApi.transitionOrder(order.slug, 'PROCESSING'),
-    },
-    {
-      label: 'Mark paid',
-      onClick: (order: any) => adminApi.transitionOrder(order.slug, 'PAID'),
-    },
-    {
-      label: 'Ship',
-      onClick: (order: any) => adminApi.transitionOrder(order.slug, 'SHIPPED'),
-    },
-    {
-      label: 'Deliver',
-      onClick: (order: any) =>
-        adminApi.transitionOrder(order.slug, 'DELIVERED'),
-    },
+    ...orderActions.map(([label, status]) => ({
+      label,
+      onClick: (order: any) => adminApi.transitionOrder(order.slug, status),
+    })),
     {
       label: 'Cancel',
       tone: 'danger',
-      onClick: (order: any) =>
-        adminApi.transitionOrder(order.slug, 'CANCELLED'),
+      onClick: (order: any) => adminApi.transitionOrder(order.slug, 'CANCELLED'),
     },
   ],
-  readOnly: true,
+
   fields: [
-    { name: 'slug', label: 'Slug', type: 'readonly' },
+    { name: 'slug', label: 'Order', type: 'readonly' },
     { name: 'status', label: 'Status', type: 'readonly' },
     { name: 'total_price', label: 'Total', type: 'readonly' },
     { name: 'user_email', label: 'Customer', type: 'readonly' },
+    { name: 'created_at', label: 'Created', type: 'readonly' },
+    { name: 'payment_method', label: 'Payment', type: 'readonly' },
+    { name: 'delivery_option', label: 'Delivery', type: 'readonly' },
   ],
 };
 
-export default function Page() {
+export default function OrdersPage() {
   return <AdminResourceManager config={config} />;
 }
