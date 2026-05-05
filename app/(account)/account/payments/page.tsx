@@ -51,7 +51,7 @@ function prettifyProvider(provider?: string) {
 
   const labels: Record<string, string> = {
     MTN: 'MTN Mobile Money',
-    AIRTEL: 'Airtel Money',
+    CARD: 'Bank / Debit Card',
     CASH: 'Cash',
     STRIPE: 'Stripe',
     PAYSTACK: 'Paystack',

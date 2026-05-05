@@ -22,7 +22,7 @@ const PROVIDER_OPTIONS = [
   'PAYSTACK',
   'FLUTTERWAVE',
   'MTN',
-  'AIRTEL',
+  'CARD',
 ] as const;
 
 const STATUS_OPTIONS = [

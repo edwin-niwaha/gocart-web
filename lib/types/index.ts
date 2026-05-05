@@ -15,13 +15,41 @@ export type TenantMembershipRole =
   | 'staff'
   | 'customer';
 
+export type TenantMembershipTenant = {
+  id: number;
+  name: string;
+  slug: string;
+  is_active?: boolean;
+};
+
+export type TenantMembershipUser = {
+  id: number;
+  email: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  is_staff: boolean;
+};
+
 export type TenantMembership = {
   id: number;
-  tenant: number;
+  tenant?: number | TenantMembershipTenant | null;
   tenant_name?: string;
   tenant_slug?: string;
+  user?: TenantMembershipUser | null;
+  user_id?: number;
+  email?: string;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
   role: TenantMembershipRole;
   is_active: boolean;
+  user_is_active?: boolean;
+  is_email_verified?: boolean;
+  status?: 'active' | 'inactive' | string;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type User = {
@@ -31,10 +59,13 @@ export type User = {
   first_name: string;
   last_name: string;
   profile_picture_url?: string | null;
+  avatar_url?: string | null;
   user_type: UserType;
   is_active: boolean;
+  is_email_verified?: boolean;
   created_at: string;
   memberships?: TenantMembership[];
+  tenant_memberships?: TenantMembership[];
   active_tenant_slug?: string | null;
 };
 
@@ -336,11 +367,11 @@ export type PaymentStatus =
 
 export type PaymentProvider =
   | 'CASH'
+  | 'CARD'
   | 'STRIPE'
   | 'PAYSTACK'
   | 'FLUTTERWAVE'
-  | 'MTN'
-  | 'AIRTEL';
+  | 'MTN';
 
 export type Payment = {
   id: number;
