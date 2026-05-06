@@ -3,13 +3,15 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, CheckCircle2, Mail, ShieldAlert, UploadCloud, User2 } from 'lucide-react';
 
-import { authApi } from '@/lib/api/services';
+import { authApi, getApiErrorMessage } from '@/lib/api/services';
 import { useAuthStore } from '@/lib/stores/auth-store';
 
 type SelectedImage = {
   file: File;
   preview: string;
 };
+
+const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
 
 export default function ProfilePage() {
   const { user, setUser } = useAuthStore();
@@ -81,6 +83,21 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setSuccess('');
+    setError('');
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file for your profile photo.');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > MAX_AVATAR_SIZE_BYTES) {
+      setError('Please choose an image smaller than 5 MB.');
+      e.target.value = '';
+      return;
+    }
+
     if (selectedImage?.preview) {
       URL.revokeObjectURL(selectedImage.preview);
     }
@@ -107,7 +124,7 @@ export default function ProfilePage() {
         formData.append('username', form.username.trim());
         formData.append('first_name', form.first_name.trim());
         formData.append('last_name', form.last_name.trim());
-        formData.append('avatar', selectedImage.file);
+        formData.append('avatar', selectedImage.file, selectedImage.file.name);
 
         updated = await authApi.updateProfile(formData);
       } else {
@@ -125,18 +142,8 @@ export default function ProfilePage() {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-    } catch (err: any) {
-      const data = err?.response?.data;
-
-      setError(
-        err?.message ||
-          data?.detail ||
-          data?.username?.[0] ||
-          data?.first_name?.[0] ||
-          data?.last_name?.[0] ||
-          data?.avatar?.[0] ||
-          'Could not update profile.'
-      );
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Could not update profile.'));
     } finally {
       setBusy(false);
     }

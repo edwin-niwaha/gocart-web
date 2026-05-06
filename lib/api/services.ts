@@ -564,7 +564,6 @@ export const authApi = {
     const { data } = await api.patch('/auth/me/', payload, {
       headers: {
         Accept: 'application/json',
-        'Content-Type': undefined,
       },
     });
     return data;
