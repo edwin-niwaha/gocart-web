@@ -8,10 +8,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Heart,
+  LifeBuoy,
   MapPin,
   Menu,
   Package,
   ShieldCheck,
+  Truck,
   User,
   UserCircle2,
   Wallet,
@@ -35,6 +37,8 @@ const accountLinks: AccountLink[] = [
   { href: '/account/addresses', label: 'Addresses', icon: MapPin },
   { href: '/account/notifications', label: 'Notifications', icon: Bell },
   { href: '/account/payments', label: 'Payments', icon: Wallet },
+  { href: '/account/shipments', label: 'Shipments', icon: Truck },
+  { href: '/support', label: 'Support', icon: LifeBuoy },
 ];
 
 export default function AccountLayout({

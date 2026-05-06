@@ -126,7 +126,7 @@ For tenant resolution, configure at least one of the following:
 | `NEXT_PUBLIC_API_URL` | Optional | Legacy compatibility fallback used by some image helpers |
 | `NEXT_PUBLIC_APP_NAME` | Optional | Branding value included in the env template for app-level naming consistency |
 | `NEXT_PUBLIC_SITE_URL` | Yes | Public site URL used for metadata and canonical links |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Optional | Google OAuth client ID for Google sign-in |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Optional | Google Web OAuth client ID for Google sign-in; keep it in the same Google/Firebase project as the API and mobile OAuth clients |
 | `NEXT_PUBLIC_GA_ID` | Optional | Google Analytics identifier |
 
 ### Production Checklist
@@ -153,7 +153,7 @@ NEXT_PUBLIC_IMAGE_HOSTNAMES=localhost,127.0.0.1
 NEXT_PUBLIC_API_URL=
 NEXT_PUBLIC_APP_NAME=GoCart
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=586470144049-86eevvemqopvkvuopi5evsgigpig9j7e.apps.googleusercontent.com
 NEXT_PUBLIC_GA_ID=
 ```
 
