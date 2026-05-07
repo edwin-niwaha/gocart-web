@@ -58,8 +58,11 @@ function toAbsoluteImageUrl(url?: string | null) {
 
 function resolveProductImage(product: any) {
   const raw =
+    product?.primary_image ||
+    product?.hero_image_url ||
     product?.hero_image ||
     product?.image_urls?.[0] ||
+    product?.images?.find((image: any) => image?.is_active !== false)?.image_url ||
     product?.image ||
     product?.image_url ||
     product?.thumbnail ||

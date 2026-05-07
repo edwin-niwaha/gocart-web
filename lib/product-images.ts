@@ -2,7 +2,10 @@ import { toAbsoluteMediaUrl } from '@/lib/env';
 
 type StorefrontImageRecord = {
   hero_image?: unknown;
+  hero_image_url?: unknown;
+  primary_image?: unknown;
   image_urls?: unknown;
+  images?: unknown;
   image?: unknown;
   image_url?: unknown;
   thumbnail?: unknown;
@@ -25,15 +28,19 @@ function getFirstString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function getPrimaryImageCandidate(value: unknown) {
+function getPrimaryImageCandidate(value: unknown): string | null {
   if (!value || typeof value !== 'object') return null;
 
   const record = value as StorefrontImageRecord;
   const imageUrls = Array.isArray(record.image_urls) ? record.image_urls : [];
+  const images = Array.isArray(record.images) ? record.images : [];
 
   return (
+    getFirstString(record.primary_image) ||
+    getFirstString(record.hero_image_url) ||
     getFirstString(record.hero_image) ||
     imageUrls.map(getFirstString).find(Boolean) ||
+    images.map(getPrimaryImageCandidate).find(Boolean) ||
     getFirstString(record.image) ||
     getFirstString(record.image_url) ||
     getFirstString(record.thumbnail) ||

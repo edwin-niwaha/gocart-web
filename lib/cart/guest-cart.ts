@@ -55,8 +55,11 @@ function resolvePrimaryImage(product: Product) {
   };
 
   return (
+    product.primary_image ??
+    product.hero_image_url ??
     product.hero_image ??
     product.image_urls?.[0] ??
+    product.images?.find((image) => image.is_active !== false)?.image_url ??
     productRecord.image ??
     productRecord.image_url ??
     null
@@ -78,6 +81,9 @@ function createProductSnapshot(product: Product): GuestCartProduct {
     image_url: image ?? null,
     image_urls:
       product.image_urls?.filter((value) => typeof value === 'string' && value.trim()) ??
+      product.images
+        ?.map((item) => item.image_url)
+        .filter((value): value is string => typeof value === 'string' && Boolean(value.trim())) ??
       (image ? [image] : []),
   };
 }

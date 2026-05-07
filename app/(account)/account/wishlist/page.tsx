@@ -56,8 +56,11 @@ function getProductImage(item: any) {
     product.photo_url ||
     product.product_image ||
     product.product_image_url ||
+    product.primary_image ||
+    product.hero_image_url ||
     product.hero_image ||
     product.image_urls?.[0] ||
+    product.images?.find((image: any) => image?.is_active !== false)?.image_url ||
     null;
 
   return toAbsoluteMediaUrl(raw);
