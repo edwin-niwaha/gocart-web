@@ -30,6 +30,7 @@ export interface ResourceField {
   autoSlugFrom?: string;
   preview?: boolean;
   readOnly?: boolean;
+  hideInList?: boolean;
 }
 
 export type ResourceAction<T> = {
@@ -48,8 +49,10 @@ export type AdminResourceConfig<T extends Record<string, any>> = {
   update?: (id: any, payload: any) => Promise<any>;
   remove?: (id: any) => Promise<any>;
   actions?: ResourceAction<T>[];
+  detailHref?: (item: T) => string;
   readOnly?: boolean;
   fields: ResourceField[];
   searchable?: boolean;
   pageSize?: number;
+  showRecordId?: boolean;
 };

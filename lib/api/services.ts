@@ -1481,9 +1481,9 @@ export const adminApi = {
     getList<Category>('/categories/', { is_active: true }),
   category: async (slug: string) =>
     getOne<Category>(`/categories/${slug}/`),
-  createCategory: async (payload: Partial<Category> & { name: string; slug: string }) =>
+  createCategory: async (payload: (Partial<Category> & { name: string }) | FormData) =>
     postOne<Category>('/categories/', payload),
-  updateCategory: async (slug: string, payload: Record<string, unknown>) =>
+  updateCategory: async (slug: string, payload: Record<string, unknown> | FormData) =>
     patchOne<Category>(`/categories/${slug}/`, payload),
   removeCategory: async (slug: string) =>
     deleteOne(`/categories/${slug}/`),
@@ -1495,9 +1495,9 @@ export const adminApi = {
     getList<Product>('/products/', { is_active: true }),
   product: async (slug: string) =>
     getOne<Product>(`/products/${slug}/`),
-  createProduct: async (payload: Record<string, unknown>) =>
+  createProduct: async (payload: Record<string, unknown> | FormData) =>
     postOne<Product>('/products/', payload),
-  updateProduct: async (slug: string, payload: Record<string, unknown>) =>
+  updateProduct: async (slug: string, payload: Record<string, unknown> | FormData) =>
     patchOne<Product>(`/products/${slug}/`, payload),
   removeProduct: async (slug: string) =>
     deleteOne(`/products/${slug}/`),

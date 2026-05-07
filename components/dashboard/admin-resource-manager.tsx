@@ -1,9 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   ChevronLeft,
   ChevronRight,
+  Eye,
   ImageIcon,
   Pencil,
   Plus,
@@ -15,6 +17,26 @@ import {
 
 import { getApiErrorMessage } from '@/lib/api/services';
 import type { AdminResourceConfig, ResourceField } from '@/lib/types/admin';
+
+type ProductImageFormItem = {
+  id?: number;
+  image_url?: string | null;
+  alt_text?: string;
+  sort_order?: number | string;
+  is_active?: boolean;
+  file?: File;
+};
+
+type ProductVariantFormItem = {
+  id?: number;
+  name?: string;
+  sku?: string;
+  price?: string | number;
+  stock_quantity?: string | number;
+  max_quantity_per_order?: string | number | null;
+  sort_order?: string | number;
+  is_active?: boolean;
+};
 
 function slugify(value: string) {
   return value
@@ -28,6 +50,35 @@ function slugify(value: string) {
 function toInputValue(type: ResourceField['type'], value: unknown) {
   if (type === 'checkbox') return Boolean(value);
 
+  if (type === 'image') return '';
+
+  if (type === 'image-list') {
+    return Array.isArray(value)
+      ? value.map((item: any, index) => ({
+          id: item.id,
+          image_url: item.image_url || item.image || null,
+          alt_text: item.alt_text || '',
+          sort_order: item.sort_order ?? index,
+          is_active: item.is_active !== false,
+        }))
+      : [];
+  }
+
+  if (type === 'variant-list') {
+    return Array.isArray(value)
+      ? value.map((item: any, index) => ({
+          id: item.id,
+          name: item.name || '',
+          sku: item.sku || '',
+          price: item.price ?? '',
+          stock_quantity: item.stock_quantity ?? 0,
+          max_quantity_per_order: item.max_quantity_per_order ?? '',
+          sort_order: item.sort_order ?? index,
+          is_active: item.is_active !== false,
+        }))
+      : [];
+  }
+
   if (type === 'json') {
     return typeof value === 'string'
       ? value
@@ -38,6 +89,93 @@ function toInputValue(type: ResourceField['type'], value: unknown) {
 }
 
 function normalizePayload(fields: ResourceField[], state: Record<string, any>) {
+  const hasFilePayload = fields.some((field) => {
+    const raw = state[field.name];
+    return (
+      field.type === 'image-list' ||
+      raw instanceof File ||
+      (Array.isArray(raw) && raw.some((item) => item?.file instanceof File))
+    );
+  });
+
+  if (hasFilePayload) {
+    const formData = new FormData();
+
+    for (const field of fields) {
+      const raw = state[field.name];
+
+      if (field.type === 'image') {
+        if (raw instanceof File) {
+          formData.append(field.name, raw, raw.name);
+        }
+        continue;
+      }
+
+      if (field.type === 'image-list') {
+        const imageItems = Array.isArray(raw) ? (raw as ProductImageFormItem[]) : [];
+        const payload = imageItems.map((item, index) => {
+          if (item.file instanceof File) {
+            formData.append(`image_file_${index}`, item.file, item.file.name);
+          }
+
+          return {
+            id: item.id,
+            alt_text: item.alt_text ?? '',
+            sort_order: Number(item.sort_order ?? index),
+            is_active: item.is_active !== false,
+          };
+        });
+
+        formData.append('images_payload', JSON.stringify(payload));
+        continue;
+      }
+
+      if (field.type === 'variant-list') {
+        const variantItems = Array.isArray(raw) ? (raw as ProductVariantFormItem[]) : [];
+        const payload = variantItems.map((item, index) => ({
+          id: item.id,
+          name: String(item.name ?? '').trim(),
+          sku: String(item.sku ?? '').trim(),
+          price: item.price ?? '0',
+          stock_quantity: Number(item.stock_quantity ?? 0),
+          max_quantity_per_order:
+            item.max_quantity_per_order === '' || item.max_quantity_per_order == null
+              ? null
+              : Number(item.max_quantity_per_order),
+          sort_order: Number(item.sort_order ?? index),
+          is_active: item.is_active !== false,
+        }));
+
+        formData.append('variants_payload', JSON.stringify(payload));
+        continue;
+      }
+
+      if (field.type === 'checkbox') {
+        formData.append(field.name, String(Boolean(raw)));
+        continue;
+      }
+
+      if (raw === '' || raw == null) {
+        if (field.preserveEmpty) formData.append(field.name, '');
+        continue;
+      }
+
+      if (field.type === 'json') {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        formData.append(
+          field.name === 'variants' ? 'variants_payload' : field.name,
+          JSON.stringify(parsed),
+        );
+      } else if (field.type === 'number') {
+        formData.append(field.name, String(Number(raw)));
+      } else {
+        formData.append(field.name, String(raw));
+      }
+    }
+
+    return formData;
+  }
+
   const payload: Record<string, any> = {};
 
   for (const field of fields) {
@@ -57,6 +195,21 @@ function normalizePayload(fields: ResourceField[], state: Record<string, any>) {
       payload[field.name] = Number(raw);
     } else if (field.type === 'json') {
       payload[field.name] = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } else if (field.type === 'variant-list') {
+      const variantItems = Array.isArray(raw) ? (raw as ProductVariantFormItem[]) : [];
+      payload[field.name] = variantItems.map((item, index) => ({
+        id: item.id,
+        name: String(item.name ?? '').trim(),
+        sku: String(item.sku ?? '').trim(),
+        price: item.price ?? '0',
+        stock_quantity: Number(item.stock_quantity ?? 0),
+        max_quantity_per_order:
+          item.max_quantity_per_order === '' || item.max_quantity_per_order == null
+            ? null
+            : Number(item.max_quantity_per_order),
+        sort_order: Number(item.sort_order ?? index),
+        is_active: item.is_active !== false,
+      }));
     } else {
       payload[field.name] = raw;
     }
@@ -95,11 +248,32 @@ function getDisplayTitle<T extends Record<string, any>>(
 
 function getDisplayImage<T extends Record<string, any>>(item: T) {
   const possibleImages = [
+    item.primary_image,
+    item.hero_image_url,
     item.image_url,
     item.image,
     item.thumbnail,
     item.hero_image,
+    Array.isArray(item.images)
+      ? item.images.find((image: any) => image?.is_active !== false)?.image_url
+      : undefined,
     item.logo,
+  ];
+
+  return possibleImages.find(isImageUrl) as string | undefined;
+}
+
+function getFieldImageUrl<T extends Record<string, any>>(
+  item: T | null,
+  fieldName: string,
+) {
+  if (!item) return undefined;
+
+  const possibleImages = [
+    item[`${fieldName}_url`],
+    fieldName === 'hero_image' ? item.hero_image_url : undefined,
+    item[fieldName],
+    fieldName === 'hero_image' ? item.primary_image : undefined,
   ];
 
   return possibleImages.find(isImageUrl) as string | undefined;
@@ -120,6 +294,8 @@ export function AdminResourceManager<T extends Record<string, any>>({
 }) {
   const idKey = String(config.idKey ?? 'id');
   const pageSize = config.pageSize ?? 8;
+  const showRecordId = config.showRecordId !== false;
+  const listFields = config.fields.filter((field) => !field.hideInList);
 
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,7 +315,12 @@ export function AdminResourceManager<T extends Record<string, any>>({
     const initial: Record<string, any> = {};
 
     config.fields.forEach((field) => {
-      initial[field.name] = field.type === 'checkbox' ? false : '';
+      initial[field.name] =
+        field.type === 'checkbox'
+          ? false
+          : field.type === 'image-list' || field.type === 'variant-list'
+            ? []
+            : '';
     });
 
     setState(initial);
@@ -216,6 +397,38 @@ export function AdminResourceManager<T extends Record<string, any>>({
     });
   }
 
+  function updateImageList(
+    field: ResourceField,
+    updater: (items: ProductImageFormItem[]) => ProductImageFormItem[],
+  ) {
+    setState((prev) => {
+      const current = Array.isArray(prev[field.name])
+        ? (prev[field.name] as ProductImageFormItem[])
+        : [];
+
+      return {
+        ...prev,
+        [field.name]: updater(current),
+      };
+    });
+  }
+
+  function updateVariantList(
+    field: ResourceField,
+    updater: (items: ProductVariantFormItem[]) => ProductVariantFormItem[],
+  ) {
+    setState((prev) => {
+      const current = Array.isArray(prev[field.name])
+        ? (prev[field.name] as ProductVariantFormItem[])
+        : [];
+
+      return {
+        ...prev,
+        [field.name]: updater(current),
+      };
+    });
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -234,7 +447,11 @@ export function AdminResourceManager<T extends Record<string, any>>({
         if (
           field.required &&
           field.type !== 'checkbox' &&
-          (raw === '' || raw == null)
+          (raw === '' ||
+            raw == null ||
+            ((field.type === 'image-list' || field.type === 'variant-list') &&
+              Array.isArray(raw) &&
+              raw.length === 0))
         ) {
           throw new Error(`${field.label} is required.`);
         }
@@ -401,7 +618,7 @@ export function AdminResourceManager<T extends Record<string, any>>({
               <tr className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-6 py-4 font-black">{config.singular}</th>
 
-                {config.fields.slice(0, 4).map((field) => (
+                {listFields.slice(0, 4).map((field) => (
                   <th key={field.name} className="px-6 py-4 font-black">
                     {field.label}
                   </th>
@@ -415,7 +632,7 @@ export function AdminResourceManager<T extends Record<string, any>>({
               {loading ? (
                 <tr>
                   <td
-                    colSpan={config.fields.slice(0, 4).length + 2}
+                    colSpan={listFields.slice(0, 4).length + 2}
                     className="px-6 py-12 text-center"
                   >
                     <p className="text-sm font-bold text-slate-500">
@@ -426,7 +643,7 @@ export function AdminResourceManager<T extends Record<string, any>>({
               ) : paginatedItems.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={config.fields.slice(0, 4).length + 2}
+                    colSpan={listFields.slice(0, 4).length + 2}
                     className="px-6 py-14 text-center"
                   >
                     <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50">
@@ -476,14 +693,16 @@ export function AdminResourceManager<T extends Record<string, any>>({
                               {title}
                             </p>
 
-                            <p className="text-xs font-semibold text-slate-500">
-                              {idKey}: {String(item[idKey] ?? '—')}
-                            </p>
+                            {showRecordId ? (
+                              <p className="text-xs font-semibold text-slate-500">
+                                {idKey}: {String(item[idKey] ?? '-')}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                       </td>
 
-                      {config.fields.slice(0, 4).map((field) => {
+                      {listFields.slice(0, 4).map((field) => {
                         const value = item[field.name];
 
                         return (
@@ -496,12 +715,40 @@ export function AdminResourceManager<T extends Record<string, any>>({
                               >
                                 {value ? 'Yes' : 'No'}
                               </span>
-                            ) : field.type === 'image' && isImageUrl(value) ? (
-                              <img
-                                src={String(value)}
-                                alt={field.label}
-                                className="h-10 w-10 rounded-xl border object-cover"
-                              />
+                            ) : field.type === 'image-list' ? (
+                              <div className="flex items-center gap-2">
+                                {Array.isArray(value) && value.length ? (
+                                  value.slice(0, 3).map((image: any, imageIndex: number) => (
+                                    <img
+                                      key={`${image.id ?? imageIndex}`}
+                                      src={image.image_url || image.image}
+                                      alt={image.alt_text || field.label}
+                                      className="h-9 w-9 rounded-lg border object-cover"
+                                    />
+                                  ))
+                                ) : (
+                                  <span className="text-sm font-semibold text-slate-400">
+                                    No images
+                                  </span>
+                                )}
+                                {Array.isArray(value) && value.length > 3 ? (
+                                  <span className="text-xs font-black text-slate-500">
+                                    +{value.length - 3}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : field.type === 'image' ? (
+                              getFieldImageUrl(item, field.name) ? (
+                                <img
+                                  src={getFieldImageUrl(item, field.name)}
+                                  alt={field.label}
+                                  className="h-10 w-10 rounded-xl border object-cover"
+                                />
+                              ) : (
+                                <span className="text-sm font-semibold text-slate-400">
+                                  No image
+                                </span>
+                              )
                             ) : (
                               <p className="line-clamp-2 max-w-xs text-sm font-semibold text-slate-700">
                                 {value == null || value === ''
@@ -515,6 +762,16 @@ export function AdminResourceManager<T extends Record<string, any>>({
 
                       <td className="px-6 py-4">
                         <div className="flex justify-end gap-2">
+                          {config.detailHref ? (
+                            <Link
+                              href={config.detailHref(item)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                              title="View product details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                          ) : null}
+
                           {config.update ? (
                             <button
                               type="button"
@@ -626,9 +883,11 @@ export function AdminResourceManager<T extends Record<string, any>>({
                         {title}
                       </h3>
 
-                      <p className="mt-1 text-xs font-semibold text-slate-500">
-                        {idKey}: {String(item[idKey] ?? '—')}
-                      </p>
+                      {showRecordId ? (
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {idKey}: {String(item[idKey] ?? '-')}
+                        </p>
+                      ) : null}
 
                       <div className="mt-2 flex flex-wrap gap-2">
                         {'is_active' in item ? (
@@ -657,13 +916,15 @@ export function AdminResourceManager<T extends Record<string, any>>({
                   </div>
 
                   <div className="mt-4 grid gap-2 text-sm">
-                    {config.fields.slice(0, 5).map((field) => {
+                    {listFields.slice(0, 5).map((field) => {
                       const value = item[field.name];
 
                       if (
                         value == null ||
                         value === '' ||
-                        field.type === 'image'
+                        field.type === 'image' ||
+                        field.type === 'image-list' ||
+                        field.type === 'variant-list'
                       ) {
                         return null;
                       }
@@ -698,6 +959,16 @@ export function AdminResourceManager<T extends Record<string, any>>({
                   ) : null}
 
                   <div className="mt-4 grid grid-cols-2 gap-2">
+                    {config.detailHref ? (
+                      <Link
+                        href={config.detailHref(item)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-black text-blue-700"
+                      >
+                        <Eye className="h-4 w-4" />
+                        View
+                      </Link>
+                    ) : null}
+
                     {config.update ? (
                       <button
                         type="button"
@@ -837,13 +1108,30 @@ export function AdminResourceManager<T extends Record<string, any>>({
                   const wide =
                     field.type === 'textarea' ||
                     field.type === 'json' ||
-                    field.type === 'image';
+                    field.type === 'image' ||
+                    field.type === 'image-list' ||
+                    field.type === 'variant-list';
 
                   return (
                     <label
                       key={field.name}
                       className={wide ? 'space-y-2 md:col-span-2' : 'space-y-2'}
                     >
+                      {(() => {
+                        const selectedImageFile =
+                          field.type === 'image' && state[field.name] instanceof File
+                            ? (state[field.name] as File)
+                            : null;
+                        const selectedImagePreview = selectedImageFile
+                          ? URL.createObjectURL(selectedImageFile)
+                          : null;
+                        const currentImagePreview =
+                          field.type === 'image'
+                            ? getFieldImageUrl(editing, field.name)
+                            : undefined;
+
+                        return (
+                          <>
                       <span className="text-sm font-black text-slate-700">
                         {field.label}
                         {field.required ? (
@@ -897,6 +1185,334 @@ export function AdminResourceManager<T extends Record<string, any>>({
                             </option>
                           ))}
                         </select>
+                      ) : field.type === 'image' ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-white">
+                              {selectedImagePreview || currentImagePreview ? (
+                                <img
+                                  src={selectedImagePreview || currentImagePreview}
+                                  alt={field.label}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <ImageIcon className="h-7 w-7 text-slate-400" />
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) =>
+                                  handleFieldChange(field, e.target.files?.[0] ?? '')
+                                }
+                                disabled={field.readOnly}
+                                className="w-full text-sm font-semibold text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-emerald-600 file:px-3 file:py-2 file:text-sm file:font-black file:text-white"
+                              />
+
+                              <p className="text-xs font-semibold text-slate-500">
+                                {selectedImageFile
+                                  ? selectedImageFile.name
+                                  : currentImagePreview
+                                    ? 'Current image will be kept unless you choose a new file.'
+                                    : 'No image selected yet.'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : field.type === 'image-list' ? (
+                        <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                          {(
+                            Array.isArray(state[field.name])
+                              ? (state[field.name] as ProductImageFormItem[])
+                              : []
+                          ).map((item, index) => (
+                            <div
+                              key={`${item.id ?? 'new'}-${index}`}
+                              className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[96px_1fr_auto]"
+                            >
+                              <div className="h-24 w-24 overflow-hidden rounded-xl border bg-slate-100">
+                                {item.file ? (
+                                  <img
+                                    src={URL.createObjectURL(item.file)}
+                                    alt={item.alt_text || field.label}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : item.image_url ? (
+                                  <img
+                                    src={item.image_url}
+                                    alt={item.alt_text || field.label}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-slate-400">
+                                    <ImageIcon className="h-6 w-6" />
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="grid gap-2 md:grid-cols-2">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) =>
+                                    updateImageList(field, (items) =>
+                                      items.map((candidate, itemIndex) =>
+                                        itemIndex === index
+                                          ? {
+                                              ...candidate,
+                                              file: e.target.files?.[0] ?? candidate.file,
+                                            }
+                                          : candidate,
+                                      ),
+                                    )
+                                  }
+                                  className="md:col-span-2 w-full text-sm font-semibold text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-emerald-600 file:px-3 file:py-2 file:text-sm file:font-black file:text-white"
+                                />
+
+                                <input
+                                  type="text"
+                                  value={item.alt_text ?? ''}
+                                  onChange={(e) =>
+                                    updateImageList(field, (items) =>
+                                      items.map((candidate, itemIndex) =>
+                                        itemIndex === index
+                                          ? { ...candidate, alt_text: e.target.value }
+                                          : candidate,
+                                      ),
+                                    )
+                                  }
+                                  placeholder="Alt text"
+                                  className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500"
+                                />
+
+                                <input
+                                  type="number"
+                                  value={item.sort_order ?? index}
+                                  onChange={(e) =>
+                                    updateImageList(field, (items) =>
+                                      items.map((candidate, itemIndex) =>
+                                        itemIndex === index
+                                          ? { ...candidate, sort_order: e.target.value }
+                                          : candidate,
+                                      ),
+                                    )
+                                  }
+                                  className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500"
+                                />
+
+                                <label className="flex items-center gap-2 text-sm font-bold text-slate-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.is_active !== false}
+                                    onChange={(e) =>
+                                      updateImageList(field, (items) =>
+                                        items.map((candidate, itemIndex) =>
+                                          itemIndex === index
+                                            ? {
+                                                ...candidate,
+                                                is_active: e.target.checked,
+                                              }
+                                            : candidate,
+                                        ),
+                                      )
+                                    }
+                                    className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                                  />
+                                  Active
+                                </label>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateImageList(field, (items) =>
+                                    items.filter((_, itemIndex) => itemIndex !== index),
+                                  )
+                                }
+                                className="inline-flex h-10 items-center justify-center rounded-xl border border-red-100 bg-red-50 px-3 text-sm font-black text-red-600"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateImageList(field, (items) => [
+                                ...items,
+                                {
+                                  alt_text: '',
+                                  sort_order: items.length,
+                                  is_active: true,
+                                },
+                              ])
+                            }
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add image
+                          </button>
+                        </div>
+                      ) : field.type === 'variant-list' ? (
+                        <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                          {(
+                            Array.isArray(state[field.name])
+                              ? (state[field.name] as ProductVariantFormItem[])
+                              : []
+                          ).map((item, index) => (
+                            <div
+                              key={`${item.id ?? 'new'}-${index}`}
+                              className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 lg:grid-cols-[1.2fr_1fr_0.8fr_0.8fr_0.8fr_auto]"
+                            >
+                              <input
+                                type="text"
+                                value={item.name ?? ''}
+                                onChange={(e) =>
+                                  updateVariantList(field, (items) =>
+                                    items.map((candidate, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...candidate, name: e.target.value }
+                                        : candidate,
+                                    ),
+                                  )
+                                }
+                                placeholder="Variant name"
+                                className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500"
+                              />
+
+                              <input
+                                type="text"
+                                value={item.sku ?? ''}
+                                onChange={(e) =>
+                                  updateVariantList(field, (items) =>
+                                    items.map((candidate, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...candidate, sku: e.target.value }
+                                        : candidate,
+                                    ),
+                                  )
+                                }
+                                placeholder="SKU"
+                                className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500"
+                              />
+
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.price ?? ''}
+                                onChange={(e) =>
+                                  updateVariantList(field, (items) =>
+                                    items.map((candidate, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...candidate, price: e.target.value }
+                                        : candidate,
+                                    ),
+                                  )
+                                }
+                                placeholder="Price"
+                                className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500"
+                              />
+
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.stock_quantity ?? 0}
+                                onChange={(e) =>
+                                  updateVariantList(field, (items) =>
+                                    items.map((candidate, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...candidate, stock_quantity: e.target.value }
+                                        : candidate,
+                                    ),
+                                  )
+                                }
+                                placeholder="Stock"
+                                className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500"
+                              />
+
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.max_quantity_per_order ?? ''}
+                                onChange={(e) =>
+                                  updateVariantList(field, (items) =>
+                                    items.map((candidate, itemIndex) =>
+                                      itemIndex === index
+                                        ? {
+                                            ...candidate,
+                                            max_quantity_per_order: e.target.value,
+                                          }
+                                        : candidate,
+                                    ),
+                                  )
+                                }
+                                placeholder="Max/order"
+                                className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:border-emerald-500"
+                              />
+
+                              <div className="flex items-center gap-2">
+                                <label className="flex items-center gap-2 text-sm font-bold text-slate-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.is_active !== false}
+                                    onChange={(e) =>
+                                      updateVariantList(field, (items) =>
+                                        items.map((candidate, itemIndex) =>
+                                          itemIndex === index
+                                            ? {
+                                                ...candidate,
+                                                is_active: e.target.checked,
+                                              }
+                                            : candidate,
+                                        ),
+                                      )
+                                    }
+                                    className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                                  />
+                                  Active
+                                </label>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateVariantList(field, (items) =>
+                                      items.filter((_, itemIndex) => itemIndex !== index),
+                                    )
+                                  }
+                                  className="inline-flex h-10 items-center justify-center rounded-xl border border-red-100 bg-red-50 px-3 text-sm font-black text-red-600"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateVariantList(field, (items) => [
+                                ...items,
+                                {
+                                  name: items.length ? '' : 'Default',
+                                  sku: '',
+                                  price: '',
+                                  stock_quantity: 0,
+                                  max_quantity_per_order: '',
+                                  sort_order: items.length,
+                                  is_active: true,
+                                },
+                              ])
+                            }
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add variant
+                          </button>
+                        </div>
                       ) : (
                         <input
                           type={
@@ -929,6 +1545,9 @@ export function AdminResourceManager<T extends Record<string, any>>({
                           {field.helpText}
                         </p>
                       ) : null}
+                          </>
+                        );
+                      })()}
                     </label>
                   );
                 })}

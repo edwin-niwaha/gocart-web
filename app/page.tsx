@@ -11,7 +11,14 @@ import { ProductCard } from '@/components/products/product-card';
 const FALLBACK_CATEGORY = '/images/cart.png';
 
 function getProductImage(product: any) {
-  return product?.hero_image || product?.image_urls?.[0] || '/images/cart.png';
+  return (
+    product?.primary_image ||
+    product?.hero_image_url ||
+    product?.hero_image ||
+    product?.image_urls?.[0] ||
+    product?.images?.find((image: any) => image?.is_active !== false)?.image_url ||
+    '/images/cart.png'
+  );
 }
 
 function formatPrice(value: any) {

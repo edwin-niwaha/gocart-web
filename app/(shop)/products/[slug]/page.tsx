@@ -368,7 +368,15 @@ export default function ProductDetailPage({
   }, [product]);
 
   const productImages = useMemo(() => {
-    return dedupeImageUrls([product?.hero_image, ...(product?.image_urls || [])]);
+    return dedupeImageUrls([
+      product?.primary_image,
+      product?.hero_image_url,
+      product?.hero_image,
+      ...(product?.image_urls || []),
+      ...(product?.images
+        ?.filter((image) => image.is_active !== false)
+        .map((image) => image.image_url) || []),
+    ]);
   }, [product]);
 
   const imageUrl =
