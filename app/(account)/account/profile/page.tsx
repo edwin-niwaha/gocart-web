@@ -135,7 +135,9 @@ export default function ProfilePage() {
         });
       }
 
-      setUser(updated);
+      const freshUser = await authApi.me();
+      setUser(freshUser);
+
       setSuccess('Profile updated successfully.');
       setSelectedImage(null);
 

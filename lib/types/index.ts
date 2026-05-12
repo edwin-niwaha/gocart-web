@@ -227,7 +227,11 @@ export type OrderItem = {
   tenant_slug?: string | null;
   product: number;
   product_title: string;
-  product_slug: string;
+  product_image?: string | null;
+  product_slug?: string;
+  variant?: number;
+  variant_name?: string;
+  variant_sku?: string;
   quantity: number;
   unit_price: string;
   line_total: string;
@@ -237,11 +241,13 @@ export type OrderItem = {
 
 export type OrderStatus =
   | 'PENDING'
+  | 'AWAITING_PAYMENT'
   | 'PROCESSING'
   | 'PAID'
-  | 'COMPLETED'
+  | 'SHIPPED'
+  | 'DELIVERED'
   | 'CANCELLED'
-  | 'FAILED'
+  | 'REFUNDED'
   | string;
 
 export type DeliveryOption = 'HOME_DELIVERY' | 'PICKUP_STATION';
@@ -251,8 +257,12 @@ export type Order = {
   tenant?: number | null;
   tenant_slug?: string | null;
   slug: string;
-  user: number;
-  user_email: string;
+  user?: number | null;
+  user_email?: string | null;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  is_guest?: boolean;
   status: OrderStatus;
   delivery_option?: DeliveryOption;
   pickup_station_id?: number | null;
@@ -506,39 +516,6 @@ export type PickupStationPayload = {
   is_active: boolean;
 };
 
-export type ShipmentStatus =
-  | 'PENDING'
-  | 'SHIPPED'
-  | 'IN_TRANSIT'
-  | 'DELIVERED'
-  | 'CANCELLED'
-  | string;
-
-export type Shipment = {
-  id: number;
-  tenant?: number | null;
-  tenant_slug?: string | null;
-  order: number;
-  order_slug: string;
-  user_email: string;
-  address: number;
-  shipping_method: number;
-  shipping_method_name: string;
-  status: ShipmentStatus;
-  tracking_number?: string | null;
-  shipping_fee: string;
-  dispatched_at?: string | null;
-  delivered_at?: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type ShipmentPayload = {
-  order: number;
-  address: number;
-  shipping_method: number;
-};
-
 export type SupportMessageStatus = 'NEW' | 'IN_PROGRESS' | 'RESOLVED';
 
 export type SupportMessage = {
@@ -557,10 +534,13 @@ export type TenantBranding = {
   app_name?: string;
   hero_title?: string;
   hero_subtitle?: string;
+  tagline?: string;
   primary_color?: string;
   secondary_color?: string;
   accent_color?: string;
   logo?: string | null;
+  logo_url?: string | null;
+  splash_image_url?: string | null;
 };
 
 export type TenantSettings = {

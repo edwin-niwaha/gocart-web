@@ -257,7 +257,7 @@ export function ProductCard({ product }: { product: Product }) {
 
         <div className="mt-auto pt-5">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xl font-extrabold text-slate-900">
+            <span className="min-w-0 break-words text-sm font-semibold leading-tight text-slate-900 sm:text-[15px]">
               {formatCurrency(safePrice)}
             </span>
 
@@ -265,7 +265,7 @@ export function ProductCard({ product }: { product: Product }) {
               type="button"
               onClick={handleAddToCart}
               disabled={!(product as any).is_in_stock || addingCart}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-800 transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--brand-green)] hover:text-[var(--brand-green)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-800 transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--brand-green)] hover:text-[var(--brand-green)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <ShoppingCart size={16} />
               {addingCart ? 'Adding...' : 'Add'}

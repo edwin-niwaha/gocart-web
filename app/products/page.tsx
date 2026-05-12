@@ -31,8 +31,8 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   const rawSearch = (params.search || '').trim().toLowerCase();
 
   const [products, categories] = await Promise.all([
-    catalogApi.products(),
-    catalogApi.categories(),
+    catalogApi.products().catch(() => []),
+    catalogApi.categories().catch(() => []),
   ]);
 
   const filteredProducts = products.filter((product: any) => {
@@ -74,15 +74,15 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   });
 
   return (
-    <div className="space-y-6 py-6">
-      <div className="rounded-lg bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="space-y-5 py-4">
+      <div className="rounded-2xl bg-white p-4 shadow-sm md:p-5">
+        <div className="space-y-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#2162A1]">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2162A1]">
               Store
             </p>
 
-            <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
+            <h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">
               {activeCategory
                 ? `${activeCategory.name} products`
                 : rawSearch
@@ -90,7 +90,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                   : 'Browse products'}
             </h1>
 
-            <p className="mt-2 text-sm text-[#565959]">
+            <p className="mt-1 text-sm text-[#565959]">
               {activeCategory && rawSearch
                 ? `Showing ${filteredProducts.length} result(s) in ${activeCategory.name} for "${params.search}".`
                 : activeCategory
@@ -101,19 +101,19 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2 overflow-x-auto pb-2">
             <Link
               href="/products"
-              className={`rounded-full border px-3 py-1.5 text-sm font-medium ${
+              className={`flex-shrink-0 rounded-full border px-4 py-2 text-xs font-bold transition ${
                 !rawCategory
                   ? 'border-[#131921] bg-[#131921] text-white'
-                  : 'border-[#D5D9D9] bg-white text-[#0F1111]'
+                  : 'border-[#D5D9D9] bg-white text-[#0F1111] hover:bg-[#F7FAFA]'
               }`}
             >
               All
             </Link>
 
-            {categories.slice(0, 8).map((category: any) => {
+            {categories.map((category: any) => {
               const active =
                 String(category.id).toLowerCase() === rawCategory ||
                 String(category.name || '').toLowerCase() === rawCategory ||
@@ -122,11 +122,13 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
               return (
                 <Link
                   key={category.id}
-                  href={`/products?category=${encodeURIComponent(category.slug || category.name)}`}
-                  className={`rounded-full border px-3 py-1.5 text-sm font-medium ${
+                  href={`/products?category=${encodeURIComponent(
+                    category.slug || category.name
+                  )}`}
+                  className={`flex-shrink-0 rounded-full border px-4 py-2 text-xs font-bold transition ${
                     active
                       ? 'border-[#131921] bg-[#131921] text-white'
-                      : 'border-[#D5D9D9] bg-white text-[#0F1111]'
+                      : 'border-[#D5D9D9] bg-white text-[#0F1111] hover:bg-[#F7FAFA]'
                   }`}
                 >
                   {category.name}
@@ -138,22 +140,24 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       </div>
 
       {filteredProducts.length ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredProducts.map((product: any) => (
             <div
               key={product.id}
-              className="rounded-md border border-[#E7E7E7] bg-white p-3 transition hover:shadow-sm"
+              className="rounded-xl border border-[#E7E7E7] bg-white p-2 transition hover:shadow-sm"
             >
               <ProductCard product={product} />
             </div>
           ))}
         </div>
       ) : (
-        <div className="rounded-lg bg-white p-10 text-center shadow-sm">
+        <div className="rounded-2xl bg-white p-10 text-center shadow-sm">
           <h2 className="text-xl font-bold">No products found</h2>
+
           <p className="mt-2 text-sm text-[#565959]">
             Try another product name, category, or clear your search.
           </p>
+
           <Link
             href="/products"
             className="mt-4 inline-flex rounded-md bg-[#FFD814] px-5 py-2.5 text-sm font-semibold text-[#0F1111] hover:bg-[#F7CA00]"

@@ -9,7 +9,6 @@ import {
   MapPin,
   Package,
   ShieldCheck,
-  Truck,
   UserCircle2,
   Wallet,
 } from 'lucide-react';
@@ -19,7 +18,6 @@ import {
   notificationApi,
   orderApi,
   paymentApi,
-  shippingApi,
   wishlistApi,
 } from '@/lib/api/services';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -30,7 +28,6 @@ type PortalStats = {
   notifications: number;
   orders: number;
   payments: number;
-  shipments: number;
   wishlist: number;
   paidTotal: number;
 };
@@ -40,7 +37,6 @@ const initialStats: PortalStats = {
   notifications: 0,
   orders: 0,
   payments: 0,
-  shipments: 0,
   wishlist: 0,
   paidTotal: 0,
 };
@@ -76,12 +72,6 @@ const quickLinks = [
     body: 'Return to products you saved for later.',
     icon: Heart,
   },
-  {
-    href: '/account/shipments',
-    title: 'Shipments',
-    body: 'Check delivery status, tracking, and shipping fees.',
-    icon: Truck,
-  },
 ];
 
 const statCards: Array<{
@@ -92,7 +82,6 @@ const statCards: Array<{
   { icon: Package, label: 'Orders', value: (stats) => stats.orders },
   { icon: Heart, label: 'Saved items', value: (stats) => stats.wishlist },
   { icon: Bell, label: 'Unread alerts', value: (stats) => stats.notifications },
-  { icon: Truck, label: 'Shipments', value: (stats) => stats.shipments },
 ];
 
 function normalizeList<T>(value: T[] | { results?: T[] } | unknown): T[] {
@@ -122,14 +111,13 @@ export default function AccountOverviewPage() {
     async function loadStats() {
       setLoading(true);
 
-      const [orders, addresses, wishlist, notifications, payments, shipments] =
+      const [orders, addresses, wishlist, notifications, payments] =
         await Promise.all([
           orderApi.list().catch(() => []),
           addressApi.list().catch(() => []),
           wishlistApi.listItems().catch(() => []),
           notificationApi.list().catch(() => []),
           paymentApi.list().catch(() => []),
-          shippingApi.shipments().catch(() => []),
         ]);
 
       if (!mounted) return;
@@ -140,7 +128,6 @@ export default function AccountOverviewPage() {
         notifications: normalizeList<any>(notifications).filter((item) => !item.is_read).length,
         orders: normalizeList(orders).length,
         payments: paymentItems.length,
-        shipments: normalizeList(shipments).length,
         wishlist: normalizeList(wishlist).length,
         paidTotal: paymentItems
           .filter((payment) => payment.status === 'PAID')
@@ -158,77 +145,106 @@ export default function AccountOverviewPage() {
     };
   }, []);
 
-  return (
-    <div className="space-y-5">
-      <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-        <div className="bg-[#127D61] p-6 text-white">
-          <p className="text-sm font-bold text-emerald-100">Account overview</p>
-          <h1 className="mt-3 text-3xl font-black tracking-tight">
-            Welcome back{displayName ? `, ${displayName}` : ''}.
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50">
-            Manage shopping activity, delivery details, payments, and account security from one portal.
-          </p>
-        </div>
+return (
+  <div className="space-y-4">
+    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+      <div className="bg-[#127D61] px-5 py-5 text-white sm:px-6">
+        <p className="text-xs font-black uppercase tracking-wide text-emerald-100">
+          Account overview
+        </p>
 
-        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
-          {statCards.map(({ icon: StatIcon, label, value }) => {
-            return (
-              <div key={String(label)} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <StatIcon className="h-5 w-5 text-[#127D61]" />
-                <p className="mt-3 text-2xl font-black text-slate-900">
-                  {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : value(stats)}
-                </p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">
-                  {label}
-                </p>
-              </div>
-            );
-          })}
-        </div>
+        <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
+          Welcome back{displayName ? `, ${displayName}` : ''}.
+        </h1>
+
+        <p className="mt-1 max-w-2xl text-sm leading-5 text-emerald-50">
+          Manage orders, delivery details, payments, wishlist, and security.
+        </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <Wallet className="h-5 w-5 text-[#127D61]" />
-          <p className="mt-3 text-sm font-bold text-slate-500">Paid total</p>
-          <p className="mt-1 text-2xl font-black text-slate-900">
+      <div className="grid gap-2 p-3 sm:grid-cols-3">
+        {statCards.map(({ icon: StatIcon, label, value }) => (
+          <div
+            key={String(label)}
+            className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#127D61]/10 text-[#127D61]">
+              <StatIcon className="h-4 w-4" />
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-lg font-black leading-none text-slate-900">
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : value(stats)}
+              </p>
+              <p className="mt-1 truncate text-[11px] font-black uppercase tracking-wide text-slate-500">
+                {label}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section className="grid gap-3 md:grid-cols-3">
+      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <Wallet className="h-5 w-5 shrink-0 text-[#127D61]" />
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-slate-500">Paid total</p>
+          <p className="break-words text-base font-black leading-tight text-slate-900 sm:text-lg">
             {loading ? 'Loading...' : formatCurrency(stats.paidTotal)}
           </p>
         </div>
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <MapPin className="h-5 w-5 text-[#127D61]" />
-          <p className="mt-3 text-sm font-bold text-slate-500">Saved addresses</p>
-          <p className="mt-1 text-2xl font-black text-slate-900">{stats.addresses}</p>
+      </div>
+
+      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <MapPin className="h-5 w-5 shrink-0 text-[#127D61]" />
+        <div>
+          <p className="text-xs font-bold text-slate-500">Saved addresses</p>
+          <p className="text-lg font-black text-slate-900">{stats.addresses}</p>
         </div>
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <ShieldCheck className="h-5 w-5 text-[#127D61]" />
-          <p className="mt-3 text-sm font-bold text-slate-500">Email status</p>
-          <p className="mt-1 text-2xl font-black text-slate-900">
+      </div>
+
+      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <ShieldCheck className="h-5 w-5 shrink-0 text-[#127D61]" />
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-slate-500">Email status</p>
+          <p className="truncate text-lg font-black text-slate-900">
             {user?.is_email_verified ? 'Verified' : 'Needs verification'}
           </p>
         </div>
       </div>
+    </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {quickLinks.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="group rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-[#127D61] hover:shadow-md"
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#127D61]/10 text-[#127D61]">
-                <Icon size={21} />
-              </div>
-              <h2 className="mt-4 text-xl font-black text-slate-900">{item.title}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{item.body}</p>
-              <p className="mt-4 text-sm font-black text-[#127D61]">Open</p>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  );
+    <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {quickLinks.map((item) => {
+        const Icon = item.icon;
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-[#127D61] hover:shadow-md"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#127D61]/10 text-[#127D61]">
+              <Icon size={19} />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-base font-black text-slate-900">
+                {item.title}
+              </h2>
+              <p className="mt-0.5 line-clamp-1 text-xs text-slate-600">
+                {item.body}
+              </p>
+            </div>
+
+            <span className="shrink-0 text-xs font-black text-[#127D61]">
+              Open
+            </span>
+          </Link>
+        );
+      })}
+    </section>
+  </div>
+);
 }

@@ -1,9 +1,5 @@
 import Link from 'next/link';
-import {
-  ChevronRight,
-  Truck,
-  ShieldCheck,
-} from 'lucide-react';
+import { ChevronRight, Menu, Truck, ShieldCheck } from 'lucide-react';
 
 import { catalogApi } from '@/lib/api/services';
 import { ProductCard } from '@/components/products/product-card';
@@ -30,10 +26,6 @@ function getCategoryName(category: any) {
   return typeof category === 'object' ? category?.name || '' : '';
 }
 
-function getCategorySlug(category: any) {
-  return typeof category === 'object' ? category?.slug || '' : '';
-}
-
 function getProductSubtitle(product: any) {
   const categoryName = getCategoryName(product?.category);
   const variants = Array.isArray(product?.variants) ? product.variants : [];
@@ -58,6 +50,7 @@ function isProductInStock(product: any) {
   }
 
   if (typeof product?.is_in_stock === 'boolean') return product.is_in_stock;
+
   return Number(product?.stock_quantity || 0) > 0;
 }
 
@@ -72,10 +65,14 @@ export default async function HomePage() {
   const sortedProducts = [...activeProducts].sort((a: any, b: any) => {
     const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
     const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
+
     return bTime - aTime;
   });
 
-  const featuredProducts = sortedProducts.filter((item: any) => item?.is_featured).slice(0, 8);
+  const featuredProducts = sortedProducts
+    .filter((item: any) => item?.is_featured)
+    .slice(0, 12);
+
   const newArrivals = sortedProducts.slice(0, 8);
   const popularCategories = categories.slice(0, 6);
   const heroSlides = (featuredProducts.length ? featuredProducts : newArrivals).slice(0, 5);
@@ -84,19 +81,19 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen bg-[#EAEDED] text-[#0F1111]">
       <main className="mx-auto max-w-[1500px] px-3 py-4 sm:px-4 lg:px-5">
-        <section className="overflow-hidden rounded-lg bg-gradient-to-r from-[#dfefff] via-[#eef6fb] to-[#f8f8f8] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <section className="overflow-hidden rounded-lg border border-white/70 bg-gradient-to-br from-white via-[#e8f3f0] to-[#fff7df] px-4 py-6 shadow-sm sm:px-6 lg:px-8 lg:py-8">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(620px,760px)] xl:items-center">
             <div className="max-w-2xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2162A1] sm:text-sm">
-                Featured collection
-              </p>
-              <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
-                Shop smarter, every day!
+
+              <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
+                Shop smarter, every day.
               </h1>
+
               <p className="mt-3 max-w-xl text-sm leading-6 text-[#37475A] sm:text-base">
-                Explore popular products, new arrivals, and trusted essentials in one clean,
-                responsive shopping experience.
+                Discover featured deals, new arrivals, and trusted essentials from a cleaner,
+                faster GoCart storefront.
               </p>
+
               <div className="mt-5 flex flex-wrap gap-3">
                 <Link
                   href="/products"
@@ -104,12 +101,30 @@ export default async function HomePage() {
                 >
                   Shop now
                 </Link>
+
                 <Link
                   href="/categories"
                   className="rounded-md border border-[#D5D9D9] bg-white px-5 py-2.5 text-sm font-semibold text-[#0F1111] transition hover:bg-[#F7FAFA]"
                 >
                   Browse categories
                 </Link>
+              </div>
+
+              <div className="mt-6 grid max-w-lg grid-cols-3 gap-3">
+                <div className="rounded-md border border-white/80 bg-white/70 p-3">
+                  <p className="text-lg font-black">{activeProducts.length}</p>
+                  <p className="text-xs font-semibold text-[#565959]">Products</p>
+                </div>
+
+                <div className="rounded-md border border-white/80 bg-white/70 p-3">
+                  <p className="text-lg font-black">{categories.length}</p>
+                  <p className="text-xs font-semibold text-[#565959]">Categories</p>
+                </div>
+
+                <div className="rounded-md border border-white/80 bg-white/70 p-3">
+                  <p className="text-lg font-black">{featuredProducts.length}</p>
+                  <p className="text-xs font-semibold text-[#565959]">Featured</p>
+                </div>
               </div>
             </div>
 
@@ -129,9 +144,16 @@ export default async function HomePage() {
                           className="h-full w-full object-contain"
                         />
                       </div>
-                      <p className="mt-3 line-clamp-2 text-sm font-medium">{product.title}</p>
-                      <p className="mt-1 text-xs text-[#565959]">{getProductSubtitle(product)}</p>
-                      <p className="mt-2 text-base font-bold">
+
+                      <p className="mt-3 line-clamp-2 text-sm font-medium">
+                        {product.title}
+                      </p>
+
+                      <p className="mt-1 text-xs text-[#565959]">
+                        {getProductSubtitle(product)}
+                      </p>
+
+                      <p className="mt-1 text-sm font-semibold text-[#0F1111] sm:text-[15px]">
                         {formatPrice(product.base_price ?? product.price ?? 0)}
                       </p>
                     </Link>
@@ -146,19 +168,43 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <section className="-mt-4 grid gap-4 lg:-mt-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="rounded-lg bg-white p-5 shadow-sm">
-            <h2 className="mb-4 text-[21px] font-bold">Shop by category</h2>
+        <section className="category-feature-layout -mt-4 lg:-mt-6">
+          <input
+            id="home-category-toggle"
+            type="checkbox"
+            defaultChecked
+            className="category-toggle sr-only"
+            aria-label="Expand categories"
+          />
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <aside className="category-panel rounded-lg bg-white p-4 shadow-sm sm:p-5">
+            <div className="category-panel-header flex items-center justify-between gap-3">
+              <h2 className="category-panel-title text-[21px] font-bold">
+                Shop by category
+              </h2>
+
+              <label
+                htmlFor="home-category-toggle"
+                className="category-panel-button inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md border border-[#0d5f49] bg-[#127D61] text-white shadow-sm transition hover:bg-[#0d5f49]"
+                aria-label="Collapse or expand categories"
+              >
+                <Menu size={20} />
+              </label>
+            </div>
+
+            <p className="category-panel-subtitle mt-1 text-xs font-semibold text-[#565959]">
+              Popular departments
+            </p>
+
+            <div className="category-panel-list mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
               {popularCategories.length ? (
                 popularCategories.map((category: any) => (
                   <Link
                     key={category.id}
                     href={`/products?category=${category.id}`}
-                    className="flex items-center gap-3 rounded-md border border-[#E7E7E7] p-3 transition hover:bg-[#F7FAFA]"
+                    className="category-link flex items-center gap-3 rounded-md border border-[#E7E7E7] p-3 transition hover:bg-[#F7FAFA]"
                   >
-                    <div className="relative h-10 w-10 overflow-hidden rounded-full border border-[#E7E7E7] bg-[#F7F8F8]">
+                    <div className="category-icon relative h-10 w-10 shrink-0 overflow-hidden rounded-full border border-[#E7E7E7] bg-[#F7F8F8]">
                       <img
                         src={category.image_url || FALLBACK_CATEGORY}
                         alt={category.name || 'Category'}
@@ -166,36 +212,53 @@ export default async function HomePage() {
                       />
                     </div>
 
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{category.name}</p>
-                      <p className="text-xs text-[#565959]">Browse essentials</p>
+                    <div className="category-text min-w-0">
+                      <p className="truncate text-sm font-semibold">
+                        {category.name}
+                      </p>
+                      <p className="text-xs text-[#565959]">
+                        Browse essentials
+                      </p>
                     </div>
                   </Link>
                 ))
               ) : (
-                <p className="text-sm text-[#565959]">Categories will appear here once available.</p>
+                <p className="category-empty text-sm text-[#565959]">
+                  Categories will appear here once available.
+                </p>
               )}
             </div>
-          </div>
+          </aside>
 
-          <div className="rounded-lg bg-white p-5 shadow-sm md:p-6">
+          <div className="featured-products-panel rounded-lg bg-white p-5 shadow-sm md:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-[21px] font-bold">Featured products</h2>
-              <Link href="/products" className="text-sm text-[#007185] hover:underline">
+
+              <Link
+                href="/products"
+                className="text-sm font-medium text-[#007185] hover:underline"
+              >
                 See more
               </Link>
             </div>
 
             {featuredProducts.length ? (
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {featuredProducts.map((product: any) => (
-                  <div key={product.id} className="rounded-md border border-[#E7E7E7] p-3 transition hover:shadow-sm">
-                    <ProductCard product={product} />
-                  </div>
-                ))}
+              <div className="featured-products-scroll -mx-1 overflow-x-auto px-1 pb-4">
+                <div className="flex gap-4">
+                  {featuredProducts.map((product: any) => (
+                    <div
+                      key={product.id}
+                      className="w-[270px] shrink-0 scroll-ml-1 snap-start rounded-xl border border-[#E7E7E7] bg-white p-3 transition hover:-translate-y-0.5 hover:shadow-md sm:w-[290px] lg:w-[310px]"
+                    >
+                      <ProductCard product={product} />
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : (
-              <p className="text-sm text-[#565959]">No featured products available yet.</p>
+              <p className="text-sm text-[#565959]">
+                No featured products available yet.
+              </p>
             )}
           </div>
         </section>
@@ -203,7 +266,11 @@ export default async function HomePage() {
         <section className="mt-6 rounded-lg bg-white p-5 shadow-sm md:p-6">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-[21px] font-bold">New arrivals</h2>
-            <Link href="/products" className="text-sm text-[#007185] hover:underline">
+
+            <Link
+              href="/products"
+              className="text-sm text-[#007185] hover:underline"
+            >
               View all
             </Link>
           </div>
@@ -223,19 +290,35 @@ export default async function HomePage() {
                       className="h-full w-full object-contain"
                     />
                   </div>
-                  <p className="mt-3 line-clamp-2 text-sm font-medium">{product.title}</p>
-                  <p className="mt-1 text-xs text-[#565959]">{getProductSubtitle(product)}</p>
-                  <p className="mt-2 text-lg font-bold">
+
+                  <p className="mt-3 line-clamp-2 text-sm font-medium">
+                    {product.title}
+                  </p>
+
+                  <p className="mt-1 text-xs text-[#565959]">
+                    {getProductSubtitle(product)}
+                  </p>
+
+                  <p className="mt-1 text-sm font-semibold text-[#0F1111]">
                     {formatPrice(product.base_price ?? product.price ?? 0)}
                   </p>
-                  <p className={`mt-1 text-xs ${isProductInStock(product) ? 'text-[#067D62]' : 'text-[#B12704]'}`}>
+
+                  <p
+                    className={`mt-1 text-xs ${
+                      isProductInStock(product)
+                        ? 'text-[#067D62]'
+                        : 'text-[#B12704]'
+                    }`}
+                  >
                     {isProductInStock(product) ? 'In stock' : 'Out of stock'}
                   </p>
                 </Link>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-[#565959]">Products will appear here once available.</p>
+            <p className="text-sm text-[#565959]">
+              Products will appear here once available.
+            </p>
           )}
         </section>
 
@@ -244,14 +327,20 @@ export default async function HomePage() {
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
               <Truck size={18} /> Fast delivery
             </div>
-            <p className="text-sm text-[#565959]">Reliable delivery from order to doorstep.</p>
+
+            <p className="text-sm text-[#565959]">
+              Reliable delivery from order to doorstep.
+            </p>
           </div>
 
           <div className="rounded-lg bg-white p-5 shadow-sm transition hover:shadow-md">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
               <ShieldCheck size={18} /> Secure checkout
             </div>
-            <p className="text-sm text-[#565959]">A simple and safe purchase flow for every order.</p>
+
+            <p className="text-sm text-[#565959]">
+              A simple and safe purchase flow for every order.
+            </p>
           </div>
 
           <div className="rounded-lg bg-white p-5 shadow-sm md:col-span-2 xl:col-span-1">
@@ -259,9 +348,11 @@ export default async function HomePage() {
               <h2 className="text-[21px] font-bold">Need more?</h2>
               <ChevronRight size={18} />
             </div>
+
             <p className="text-sm text-[#565959]">
               Browse the full catalog and discover more products for your store.
             </p>
+
             <Link
               href="/products"
               className="mt-4 inline-flex rounded-md bg-[#FFD814] px-5 py-2.5 text-sm font-semibold text-[#0F1111] transition hover:bg-[#F7CA00]"
