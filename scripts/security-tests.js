@@ -71,10 +71,10 @@ assert.match(serviceSource, /IDEMPOTENCY_KEY_HEADER/);
 assert.match(serviceSource, /idempotencyKey/);
 
 const checkoutSource = read('components/checkout-panel.tsx');
-assert.match(checkoutSource, /createIdempotencyKey\('checkout'\)/);
-assert.match(checkoutSource, /createIdempotencyKey\('payment-initiate'\)/);
-assert.match(checkoutSource, /createIdempotencyKey\('payment-card-initiate'\)/);
-assert.match(checkoutSource, /createIdempotencyKey\('payment-finalize'\)/);
+assert.match(checkoutSource, /createIdempotencyKey\(["']checkout["']\)/);
+assert.match(checkoutSource, /createIdempotencyKey\(["']payment-initiate["']\)/);
+assert.match(checkoutSource, /createIdempotencyKey\(["']payment-card-initiate["']\)/);
+assert.match(checkoutSource, /createIdempotencyKey\(["']payment-finalize["']\)/);
 assert.doesNotMatch(checkoutSource, /AIRTEL|Airtel/);
 assert.match(checkoutSource, /Bank \/ Debit Card/);
 assert.match(checkoutSource, /card_last4/);

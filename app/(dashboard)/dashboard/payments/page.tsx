@@ -1,106 +1,204 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
+  BadgeCheck,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock3,
+  Eye,
   Loader2,
   RefreshCw,
   RotateCcw,
-  Save,
   Search,
   Wallet,
-  BadgeCheck,
-  Clock3,
-  AlertTriangle,
+  XCircle,
 } from 'lucide-react';
-import { adminApi, type Payment } from '@/lib/api/services';
 
-const PROVIDER_OPTIONS = [
-  'CASH',
-  'STRIPE',
-  'PAYSTACK',
-  'FLUTTERWAVE',
-  'MTN',
-  'CARD',
-] as const;
+import {
+  adminApi,
+  getApiErrorMessage,
+  type Payment,
+} from '@/lib/api/services';
 
-const STATUS_OPTIONS = [
-  'PENDING',
-  'PROCESSING',
-  'PAID',
-  'FAILED',
-  'REFUNDED',
-  'CANCELLED',
+const PROVIDER_OPTIONS = ['CASH', 'STRIPE', 'PAYSTACK', 'FLUTTERWAVE', 'MTN', 'CARD'] as const;
+
+const STATUS_TABS = [
+  { label: 'All', value: '' },
+  { label: 'Pending', value: 'PENDING' },
+  { label: 'Processing', value: 'PROCESSING' },
+  { label: 'Paid', value: 'PAID' },
+  { label: 'Failed', value: 'FAILED' },
+  { label: 'Refunded', value: 'REFUNDED' },
+  { label: 'Cancelled', value: 'CANCELLED' },
 ] as const;
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 
-type EditableRow = {
-  provider: string;
-  status: string;
-  transaction_id: string;
+const PAYMENT_STEPS = ['PENDING', 'PROCESSING', 'PAID'];
+
+const PAYMENT_TRANSITIONS: Record<string, string[]> = {
+  PENDING: ['PROCESSING', 'PAID', 'FAILED', 'CANCELLED'],
+  PROCESSING: ['PAID', 'FAILED', 'CANCELLED'],
+  PAID: ['REFUNDED'],
+  FAILED: ['PROCESSING', 'CANCELLED'],
+  REFUNDED: [],
+  CANCELLED: [],
 };
+
+function getAllowedPaymentTransitions(status?: string) {
+  return PAYMENT_TRANSITIONS[String(status || 'PENDING').toUpperCase()] || [];
+}
+
+function money(amount: string | number, currency = 'UGX') {
+  const numeric = Number(amount || 0);
+  if (Number.isNaN(numeric)) return `${currency} ${amount}`;
+  return `${currency} ${numeric.toLocaleString()}`;
+}
+
+function statusClass(status?: string) {
+  switch (status) {
+    case 'PAID':
+      return 'bg-emerald-100 text-emerald-700 ring-emerald-200';
+    case 'PROCESSING':
+      return 'bg-blue-100 text-blue-700 ring-blue-200';
+    case 'PENDING':
+      return 'bg-amber-100 text-amber-700 ring-amber-200';
+    case 'FAILED':
+      return 'bg-red-100 text-red-700 ring-red-200';
+    case 'REFUNDED':
+      return 'bg-violet-100 text-violet-700 ring-violet-200';
+    case 'CANCELLED':
+      return 'bg-slate-200 text-slate-700 ring-slate-300';
+    default:
+      return 'bg-slate-100 text-slate-700 ring-slate-200';
+  }
+}
+
+function actionClass(status: string) {
+  switch (status) {
+    case 'PAID':
+      return 'bg-emerald-600 hover:bg-emerald-700 text-white';
+    case 'PROCESSING':
+      return 'bg-blue-600 hover:bg-blue-700 text-white';
+    case 'FAILED':
+      return 'bg-red-600 hover:bg-red-700 text-white';
+    case 'REFUNDED':
+      return 'bg-violet-600 hover:bg-violet-700 text-white';
+    case 'CANCELLED':
+      return 'bg-slate-700 hover:bg-slate-800 text-white';
+    default:
+      return 'bg-amber-500 hover:bg-amber-600 text-white';
+  }
+}
+
+function PaymentProgress({ status }: { status?: string }) {
+  const normalized = String(status || 'PENDING').toUpperCase();
+
+  if (normalized === 'FAILED') {
+    return (
+      <div className="flex items-center gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm font-black text-red-700">
+        <XCircle className="h-4 w-4" />
+        Payment failed
+      </div>
+    );
+  }
+
+  if (normalized === 'CANCELLED') {
+    return (
+      <div className="flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700">
+        <XCircle className="h-4 w-4" />
+        Payment cancelled
+      </div>
+    );
+  }
+
+  if (normalized === 'REFUNDED') {
+    return (
+      <div className="flex items-center gap-2 rounded-2xl bg-violet-50 px-4 py-3 text-sm font-black text-violet-700">
+        <CheckCircle2 className="h-4 w-4" />
+        Payment refunded
+      </div>
+    );
+  }
+
+  const currentIndex = Math.max(0, PAYMENT_STEPS.indexOf(normalized));
+
+  return (
+    <div className="overflow-x-auto rounded-2xl bg-slate-50 px-4 py-4">
+      <div className="flex min-w-max items-center gap-2">
+        {PAYMENT_STEPS.map((step, index) => {
+          const done = index <= currentIndex;
+
+          return (
+            <div key={step} className="flex items-center gap-2">
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${
+                  done ? 'bg-[#127D61] text-white' : 'bg-slate-200 text-slate-500'
+                }`}
+              >
+                {done ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+              </div>
+
+              <span
+                className={`text-xs font-black ${
+                  done ? 'text-[#127D61]' : 'text-slate-400'
+                }`}
+              >
+                {step}
+              </span>
+
+              {index < PAYMENT_STEPS.length - 1 ? (
+                <div
+                  className={`h-1 w-8 rounded-full ${
+                    index < currentIndex ? 'bg-[#127D61]' : 'bg-slate-200'
+                  }`}
+                />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [search, setSearch] = useState('');
   const [providerFilter, setProviderFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [pageSize, setPageSize] = useState<number>(10);
+  const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
-  const [drafts, setDrafts] = useState<Record<number, EditableRow>>({});
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
-  const loadPayments = async (showRefresh = false) => {
+  async function loadPayments(showRefresh = false) {
     try {
-      setError(null);
-      if (showRefresh) setRefreshing(true);
-      else setLoading(true);
+      setError('');
+      showRefresh ? setRefreshing(true) : setLoading(true);
 
       const data = await adminApi.payments();
-      setPayments(data);
-
-      const nextDrafts: Record<number, EditableRow> = {};
-      for (const payment of data) {
-        nextDrafts[payment.id] = {
-          provider: payment.provider ?? '',
-          status: payment.status ?? '',
-          transaction_id: payment.transaction_id ?? '',
-        };
-      }
-      setDrafts(nextDrafts);
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Failed to load payments.');
+      setPayments(Array.isArray(data) ? data : []);
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to load payments.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }
 
   useEffect(() => {
-    loadPayments();
+    void loadPayments();
   }, []);
 
-  const parseAmount = (amount: string | number) => {
-    const numeric = Number(amount);
-    return Number.isNaN(numeric) ? 0 : numeric;
-  };
-
-  const currencyLabel = useMemo(() => {
-    const firstCurrency = payments.find((p) => p.currency)?.currency;
-    return firstCurrency || 'UGX';
-  }, [payments]);
-
-  const formatAmount = (amount: string | number, currency: string) => {
-    const numeric = Number(amount);
-    if (Number.isNaN(numeric)) return `${amount} ${currency}`;
-    return `${numeric.toLocaleString()} ${currency}`;
-  };
+  const currency = payments.find((p) => p.currency)?.currency || 'UGX';
 
   const filteredPayments = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -116,64 +214,36 @@ export default function PaymentsPage() {
           payment.provider,
           payment.status,
           payment.currency,
+          payment.transaction_id,
         ]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(term));
 
-      const matchesProvider =
-        !providerFilter || payment.provider === providerFilter;
-
-      const matchesStatus =
-        !statusFilter || payment.status === statusFilter;
+      const matchesProvider = !providerFilter || payment.provider === providerFilter;
+      const matchesStatus = !statusFilter || payment.status === statusFilter;
 
       return matchesSearch && matchesProvider && matchesStatus;
     });
   }, [payments, search, providerFilter, statusFilter]);
 
   const summary = useMemo(() => {
-    const totalAmount = payments.reduce(
-      (sum, payment) => sum + parseAmount(payment.amount),
-      0
+    const totalAmount = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const paid = payments.filter((p) => p.status === 'PAID');
+    const pending = payments.filter((p) =>
+      ['PENDING', 'PROCESSING'].includes(String(p.status)),
     );
-
-    const paidPayments = payments.filter((p) => p.status === 'PAID');
-    const pendingPayments = payments.filter(
-      (p) => p.status === 'PENDING' || p.status === 'PROCESSING'
-    );
-    const failedPayments = payments.filter((p) => p.status === 'FAILED');
-
-    const paidAmount = paidPayments.reduce(
-      (sum, payment) => sum + parseAmount(payment.amount),
-      0
-    );
-
-    const pendingAmount = pendingPayments.reduce(
-      (sum, payment) => sum + parseAmount(payment.amount),
-      0
-    );
+    const failed = payments.filter((p) => p.status === 'FAILED');
 
     return {
       total: payments.length,
       totalAmount,
-      paid: paidPayments.length,
-      paidAmount,
-      pending: pendingPayments.length,
-      pendingAmount,
-      failed: failedPayments.length,
+      paid: paid.length,
+      paidAmount: paid.reduce((sum, p) => sum + Number(p.amount || 0), 0),
+      pending: pending.length,
+      pendingAmount: pending.reduce((sum, p) => sum + Number(p.amount || 0), 0),
+      failed: failed.length,
     };
   }, [payments]);
-
-  const filteredSummary = useMemo(() => {
-    const totalAmount = filteredPayments.reduce(
-      (sum, payment) => sum + parseAmount(payment.amount),
-      0
-    );
-
-    return {
-      count: filteredPayments.length,
-      totalAmount,
-    };
-  }, [filteredPayments]);
 
   const totalPages = Math.max(1, Math.ceil(filteredPayments.length / pageSize));
 
@@ -186,95 +256,56 @@ export default function PaymentsPage() {
     setPage(1);
   }, [search, providerFilter, statusFilter, pageSize]);
 
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
-
-  const updateDraft = (
-    id: number,
-    key: keyof EditableRow,
-    value: string
-  ) => {
-    setDrafts((prev) => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        [key]: value,
-      },
-    }));
-  };
-
-  const handleSave = async (payment: Payment) => {
-    const draft = drafts[payment.id];
-    if (!draft) return;
-
+  async function quickUpdate(payment: Payment, status: string) {
     try {
       setSavingId(payment.id);
+      setError('');
 
       const updated = await adminApi.updatePayment(payment.id, {
-        provider: draft.provider,
-        status: draft.status,
-        transaction_id: draft.transaction_id || '',
+        provider: payment.provider || 'CASH',
+        status,
+        transaction_id: payment.transaction_id || '',
       });
 
       setPayments((prev) =>
-        prev.map((item) => (item.id === payment.id ? updated : item))
+        prev.map((item) => (item.id === payment.id ? updated : item)),
       );
-
-      setDrafts((prev) => ({
-        ...prev,
-        [payment.id]: {
-          provider: updated.provider ?? '',
-          status: updated.status ?? '',
-          transaction_id: updated.transaction_id ?? '',
-        },
-      }));
-    } catch (err: any) {
-      alert(err?.response?.data?.detail || 'Failed to update payment.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to update payment.'));
     } finally {
       setSavingId(null);
     }
-  };
+  }
 
-  const resetFilters = () => {
+  function resetFilters() {
     setSearch('');
     setProviderFilter('');
     setStatusFilter('');
     setPage(1);
-  };
-
-  const getPageRangeText = () => {
-    if (filteredPayments.length === 0) return '0 of 0';
-    const start = (page - 1) * pageSize + 1;
-    const end = Math.min(page * pageSize, filteredPayments.length);
-    return `${start}-${end} of ${filteredPayments.length}`;
-  };
+  }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Payments</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              View tenant payments, monitor amounts, and update payment method or status.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-              Filtered total:{' '}
-              <span className="font-semibold text-slate-900">
-                {formatAmount(filteredSummary.totalAmount, currencyLabel)}
-              </span>
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="bg-gradient-to-r from-[#127D61] to-emerald-600 px-6 py-7 text-white">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-black uppercase tracking-wide">
+                Payments
+              </p>
+              <h1 className="mt-3 text-3xl font-black tracking-tight">
+                Payment management
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm text-emerald-50">
+                Monitor payment status, order payments, providers, and correct payment transitions.
+              </p>
             </div>
 
             <button
               type="button"
-              onClick={() => loadPayments(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              onClick={() => void loadPayments(true)}
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#127D61] disabled:opacity-60"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
@@ -282,131 +313,76 @@ export default function PaymentsPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Total payments
-              </div>
-              <Wallet className="h-4 w-4 text-slate-400" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-slate-900">
-              {summary.total}
-            </div>
-            <div className="mt-1 text-sm text-slate-500">
-              {formatAmount(summary.totalAmount, currencyLabel)}
-            </div>
-          </div>
+        <div className="grid gap-4 border-b border-slate-100 p-5 md:grid-cols-4">
+          <SummaryCard icon={Wallet} label="Total payments" value={summary.total} detail={money(summary.totalAmount, currency)} />
+          <SummaryCard icon={BadgeCheck} label="Paid" value={summary.paid} detail={money(summary.paidAmount, currency)} tone="green" />
+          <SummaryCard icon={Clock3} label="Pending / processing" value={summary.pending} detail={money(summary.pendingAmount, currency)} tone="amber" />
+          <SummaryCard icon={AlertTriangle} label="Failed" value={summary.failed} detail="Needs attention" tone="red" />
+        </div>
 
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-medium uppercase tracking-wide text-emerald-700">
-                Paid
-              </div>
-              <BadgeCheck className="h-4 w-4 text-emerald-500" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-emerald-700">
-              {summary.paid}
-            </div>
-            <div className="mt-1 text-sm text-emerald-700/80">
-              {formatAmount(summary.paidAmount, currencyLabel)}
-            </div>
-          </div>
+        <div className="border-b border-slate-100 px-5 py-4">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {STATUS_TABS.map((tab) => {
+              const active = statusFilter === tab.value;
 
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-medium uppercase tracking-wide text-amber-700">
-                Pending
-              </div>
-              <Clock3 className="h-4 w-4 text-amber-500" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-amber-700">
-              {summary.pending}
-            </div>
-            <div className="mt-1 text-sm text-amber-700/80">
-              {formatAmount(summary.pendingAmount, currencyLabel)}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-medium uppercase tracking-wide text-rose-700">
-                Failed
-              </div>
-              <AlertTriangle className="h-4 w-4 text-rose-500" />
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-rose-700">
-              {summary.failed}
-            </div>
-            <div className="mt-1 text-sm text-rose-700/80">
-              Needs attention
-            </div>
+              return (
+                <button
+                  key={tab.label}
+                  type="button"
+                  onClick={() => setStatusFilter(tab.value)}
+                  className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-black transition ${
+                    active
+                      ? 'bg-[#127D61] text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <div className="xl:col-span-2">
-            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+        <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-5">
+          <label className="xl:col-span-2">
+            <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">
               Search
-            </label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            </span>
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <Search className="h-4 w-4 text-slate-400" />
               <input
-                type="text"
-                placeholder="Email, username, phone, order..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 py-2 pl-9 pr-4 text-sm outline-none focus:border-slate-500"
+                placeholder="Email, phone, order, transaction..."
+                className="w-full bg-transparent text-sm font-semibold outline-none"
               />
             </div>
-          </div>
+          </label>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+          <label>
+            <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">
               Provider
-            </label>
+            </span>
             <select
               value={providerFilter}
               onChange={(e) => setProviderFilter(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+              className="h-[46px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none"
             >
               <option value="">All providers</option>
-              {PROVIDER_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
+              {PROVIDER_OPTIONS.map((item) => (
+                <option key={item}>{item}</option>
               ))}
             </select>
-          </div>
+          </label>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
-              Status
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
-            >
-              <option value="">All statuses</option>
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+          <label>
+            <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">
               Rows
-            </label>
+            </span>
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+              className="h-[46px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none"
             >
               {PAGE_SIZE_OPTIONS.map((size) => (
                 <option key={size} value={size}>
@@ -414,190 +390,207 @@ export default function PaymentsPage() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex h-[46px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-black text-slate-700 hover:bg-slate-50"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reset
+            </button>
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-slate-500">
-            Showing {getPageRangeText()}
+        {error ? (
+          <div className="mx-5 mb-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {error}
           </div>
+        ) : null}
 
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            <RotateCcw className="h-4 w-4" />
-            Reset filters
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        {loading ? (
-          <div className="flex items-center justify-center gap-3 px-6 py-16 text-slate-500">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Loading payments...
-          </div>
-        ) : filteredPayments.length === 0 ? (
-          <div className="px-6 py-16 text-center">
-            <div className="text-base font-medium text-slate-700">No payments found</div>
-            <div className="mt-1 text-sm text-slate-500">
-              Try changing the search text or filters.
+        <div className="space-y-4 p-5">
+          {loading ? (
+            <div className="flex items-center justify-center gap-3 rounded-2xl bg-slate-50 px-6 py-16 text-slate-500">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading payments...
             </div>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="min-w-[1100px] w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50">
-                  <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3">Order</th>
-                    <th className="px-4 py-3">Amount</th>
-                    <th className="px-4 py-3">Phone</th>
-                    <th className="px-4 py-3">Method</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Action</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {paginatedPayments.map((payment) => {
-                    const draft = drafts[payment.id] ?? {
-                      provider: payment.provider ?? '',
-                      status: payment.status ?? '',
-                      transaction_id: payment.transaction_id ?? '',
-                    };
-
-                    const changed =
-                      draft.provider !== (payment.provider ?? '') ||
-                      draft.status !== (payment.status ?? '') ||
-                      draft.transaction_id !== (payment.transaction_id ?? '');
-
-                    return (
-                      <tr key={payment.id} className="align-top">
-                        <td className="px-4 py-4">
-                          <div className="font-medium text-slate-800">
-                            {payment.username || 'User'}
-                          </div>
-                          <div className="text-sm text-slate-500">
-                            {payment.user_email || '-'}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="font-medium text-slate-800">
-                            {payment.order_slug || '-'}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            Order status: {payment.order_status || '-'}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4 text-sm font-medium text-slate-700">
-                          {formatAmount(payment.amount, payment.currency)}
-                        </td>
-
-                        <td className="px-4 py-4 text-sm text-slate-700">
-                          {payment.phone_number || '-'}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <select
-                            value={draft.provider}
-                            onChange={(e) =>
-                              updateDraft(payment.id, 'provider', e.target.value)
-                            }
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
-                          >
-                            {PROVIDER_OPTIONS.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <select
-                            value={draft.status}
-                            onChange={(e) =>
-                              updateDraft(payment.id, 'status', e.target.value)
-                            }
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
-                          >
-                            {STATUS_OPTIONS.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <button
-                            type="button"
-                            disabled={!changed || savingId === payment.id}
-                            onClick={() => handleSave(payment)}
-                            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {savingId === payment.id ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Saving...
-                              </>
-                            ) : (
-                              <>
-                                <Save className="h-4 w-4" />
-                                Save
-                              </>
-                            )}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          ) : paginatedPayments.length === 0 ? (
+            <div className="rounded-2xl bg-slate-50 px-6 py-16 text-center">
+              <p className="font-black text-slate-800">No payments found</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Try changing filters or search.
+              </p>
             </div>
+          ) : (
+            paginatedPayments.map((payment) => {
+              const nextTransitions = getAllowedPaymentTransitions(payment.status);
 
-            <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-slate-500">
-                Page {page} of {totalPages}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                  disabled={page === 1}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              return (
+                <article
+                  key={payment.id}
+                  className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
                 >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </button>
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <h2 className="text-lg font-black text-slate-900">
+                          {payment.username || payment.user_email || 'Customer'}
+                        </h2>
 
-                <button
-                  type="button"
-                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                  disabled={page === totalPages}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
+                        <span className={`rounded-full px-3 py-1 text-xs font-black ring-1 ${statusClass(payment.status)}`}>
+                          {payment.status || 'PENDING'}
+                        </span>
+
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+                          {payment.provider || 'NO METHOD'}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 text-sm text-slate-600 md:grid-cols-2 xl:grid-cols-4">
+                        <span>
+                          Order:{' '}
+                          <span className="font-black text-slate-900">
+                            {payment.order_slug || '—'}
+                          </span>
+                        </span>
+
+                        <span>
+                          Order status:{' '}
+                          <span className="font-black text-slate-900">
+                            {payment.order_status || '—'}
+                          </span>
+                        </span>
+
+                        <span>
+                          Phone:{' '}
+                          <span className="font-black text-slate-900">
+                            {payment.phone_number || '—'}
+                          </span>
+                        </span>
+
+                        <span>
+                          Transaction:{' '}
+                          <span className="font-black text-slate-900">
+                            {payment.transaction_id || '—'}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 xl:text-right">
+                      <p className="text-xs font-black uppercase tracking-wide text-slate-400">
+                        Amount
+                      </p>
+                      <p className="mt-1 break-words text-2xl font-black leading-tight text-slate-950 sm:text-3xl">
+                        {money(payment.amount, payment.currency || currency)}
+                      </p>
+
+                      {payment.order_slug ? (
+                        <Link
+                          href={`/dashboard/orders/${payment.order_slug}`}
+                          className="mt-3 inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-100"
+                        >
+                          <Eye className="h-4 w-4" />
+                          View order
+                        </Link>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <PaymentProgress status={payment.status} />
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {nextTransitions.map((status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        disabled={savingId === payment.id}
+                        onClick={() => quickUpdate(payment, status)}
+                        className={`rounded-xl px-4 py-2.5 text-xs font-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${actionClass(status)}`}
+                      >
+                        {savingId === payment.id ? 'Updating...' : status}
+                      </button>
+                    ))}
+
+                    {!nextTransitions.length ? (
+                      <span className="rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-black text-slate-500">
+                        No next action
+                      </span>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+
+        {!loading && filteredPayments.length > 0 ? (
+          <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-semibold text-slate-500">
+              Page {page} of {totalPages} • {filteredPayments.length} payment
+              {filteredPayments.length === 1 ? '' : 's'}
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 disabled:opacity-50"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </button>
+
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 disabled:opacity-50"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
-          </>
-        )}
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function SummaryCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone = 'slate',
+}: {
+  icon: any;
+  label: string;
+  value: number;
+  detail: string;
+  tone?: 'slate' | 'green' | 'amber' | 'red';
+}) {
+  const classes = {
+    slate: 'bg-slate-50 text-slate-700',
+    green: 'bg-emerald-50 text-emerald-700',
+    amber: 'bg-amber-50 text-amber-700',
+    red: 'bg-red-50 text-red-700',
+  };
+
+  return (
+    <div className={`rounded-2xl p-4 ${classes[tone]}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-black uppercase tracking-wide">{label}</p>
+        <Icon className="h-5 w-5" />
       </div>
+      <p className="mt-3 text-3xl font-black">{value}</p>
+      <p className="mt-1 break-words text-sm font-semibold leading-tight opacity-80">{detail}</p>
     </div>
   );
 }

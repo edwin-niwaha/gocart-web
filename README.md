@@ -28,7 +28,7 @@ GoCart Web is a tenant-aware ecommerce frontend built with Next.js App Router, R
 - Multi-tenant storefront resolution using a fixed tenant slug, subdomain routing, or custom domain mappings
 - Catalog browsing with products, categories, product details, reviews, and search
 - Shopper workflows for authentication, wishlists, cart management, checkout, orders, addresses, payments, and notifications
-- Admin dashboard for products, inventory, coupons, shipments, branding, support, feature flags, users, and related resources
+- Admin dashboard for products, inventory, coupons, delivery, branding, support, feature flags, users, and related resources
 - Tenant-aware API client with token refresh, idempotency helpers, and compatibility headers/query params
 - Production-minded middleware with security headers and tenant propagation
 - Optional Google sign-in and analytics support

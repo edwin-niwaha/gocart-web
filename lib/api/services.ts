@@ -37,15 +37,12 @@ import type {
   Order,
   OrderItem,
   Payment as BasePayment,
-  PaymentPayload,
   PickupStation,
   PickupStationPayload,
   Product,
   ProductRating,
   ProductVariant,
   Review,
-  Shipment,
-  ShipmentPayload,
   ShippingMethod,
   ShippingMethodPayload,
   SupportMessage,
@@ -453,6 +450,14 @@ export type CheckoutPayload = {
   payment_method?: string;
   pickup_station_id?: number;
   coupon_code?: string;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  street_name?: string;
+  city?: string;
+  area?: string;
+  region?: string;
+  additional_information?: string;
 };
 
 export type CheckoutSummaryRequest = {
@@ -460,6 +465,14 @@ export type CheckoutSummaryRequest = {
   delivery_option?: 'HOME_DELIVERY' | 'PICKUP_STATION';
   pickup_station_id?: number;
   coupon_code?: string;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  street_name?: string;
+  city?: string;
+  area?: string;
+  region?: string;
+  additional_information?: string;
 };
 
 export type CheckoutSummary = {
@@ -707,6 +720,39 @@ export const variantApi = {
   remove: async (id: number | string) =>
     deleteOne(`/variants/${id}/`),
 };
+
+function toInventoryRecord(variant: ProductVariant): Inventory {
+  const stockQuantity = Number(variant.stock_quantity ?? 0);
+  const lowStockThreshold = Number(variant.max_quantity_per_order ?? 5);
+
+  return {
+    id: variant.id,
+    tenant: variant.tenant ?? null,
+    tenant_slug: variant.tenant_slug ?? null,
+    product: Number((variant as ProductVariant & { product?: number }).product ?? 0),
+    product_title:
+      (variant as ProductVariant & { product_title?: string }).product_title ||
+      variant.name,
+    stock_quantity: stockQuantity,
+    reserved_quantity: 0,
+    available_quantity: stockQuantity,
+    low_stock_threshold: lowStockThreshold,
+    is_in_stock: Boolean(variant.is_in_stock ?? stockQuantity > 0),
+    created_at: variant.created_at ?? '',
+    updated_at: variant.updated_at ?? '',
+  };
+}
+
+function toInventoryPage(data: PaginatedResponse<ProductVariant>): PaginatedResponse<Inventory> {
+  if (isPaginatedResponse(data)) {
+    return {
+      ...data,
+      results: data.results.map(toInventoryRecord),
+    };
+  }
+
+  return data.map(toInventoryRecord);
+}
 
 /* ============================================================================
  * Cart
@@ -997,12 +1043,6 @@ export const orderApi = {
   update: async (slug: string, payload: Record<string, unknown>) =>
     patchOne<Order>(`/orders/${slug}/`, payload),
 
-  cancel: async (slug: string, payload?: { reason?: string }) =>
-    postOne<Order>(`/orders/${slug}/cancel/`, payload ?? {}),
-
-  requestRefund: async (slug: string, payload?: { reason?: string }) =>
-    postOne<Order>(`/orders/${slug}/refund/`, payload ?? {}),
-
   remove: async (slug: string) =>
     deleteOne(`/orders/${slug}/`),
 
@@ -1068,13 +1108,13 @@ export const couponApi = {
 
 export const inventoryApi = {
   list: async (params?: ApiListParams) =>
-    getList<Inventory>('/inventory/', params),
+    (await variantApi.list(params as VariantQueryParams | undefined)).map(toInventoryRecord),
 
   listPage: async (params?: ApiListParams) =>
-    getPaginatedList<Inventory>('/inventory/', params),
+    toInventoryPage(await variantApi.listPage(params as VariantQueryParams | undefined)),
 
   movements: async (params?: ApiListParams) =>
-    getList<InventoryMovement>('/inventory-movements/', params),
+    [] as InventoryMovement[],
 };
 
 export const addressApi = {
@@ -1108,7 +1148,6 @@ export interface InitiateMTNResponse {
 
 export interface InitiateCardPayload {
   address_id?: number;
-  order?: number;
   delivery_option?: 'HOME_DELIVERY' | 'PICKUP_STATION';
   pickup_station_id?: number;
   coupon_code?: string;
@@ -1161,18 +1200,9 @@ export const paymentApi = {
   listPage: async (params?: PaymentListParams & ApiListParams) =>
     getPaginatedList<Payment>('/payments/', compactObject(params ?? {})),
 
-  create: async (payload: PaymentPayload) => {
-    try {
-      return await postOne<Payment>('/payments/', payload);
-    } catch (error: unknown) {
-      throw new Error(getApiErrorMessage(error, 'Failed to create payment.'));
-    }
-  },
-
   initiateMTN: async (
     payload: {
       address_id?: number;
-      order?: number;
       phone_number: string;
       delivery_option?: 'HOME_DELIVERY' | 'PICKUP_STATION';
       pickup_station_id?: number;
@@ -1246,20 +1276,6 @@ export const paymentApi = {
     }
   },
 
-  cancel: async (reference: string, payload?: { reason?: string }) =>
-    postOne<PaymentStatusResponse>(
-      `/payments/${reference}/cancel/`,
-      payload ?? {}
-    ),
-
-  refund: async (
-    reference: string,
-    payload?: { amount?: string | number; reason?: string }
-  ) =>
-    postOne<PaymentStatusResponse>(
-      `/payments/${reference}/refund/`,
-      payload ?? {}
-    ),
 };
 
 /* ============================================================================
@@ -1275,15 +1291,6 @@ export const shippingApi = {
 
   pickupStations: async (params?: ApiListParams) =>
     getList<PickupStation>('/pickup-stations/', params),
-
-  shipments: async (params?: ApiListParams) =>
-    getList<Shipment>('/shipments/', params),
-
-  shipment: async (id: number | string) =>
-    getOne<Shipment>(`/shipments/${id}/`),
-
-  createShipment: async (payload: ShipmentPayload) =>
-    postOne<Shipment>('/shipments/', payload),
 };
 
 /* ============================================================================
@@ -1515,9 +1522,6 @@ export const adminApi = {
     patchOne<Order>(`/orders/${slug}/`, payload),
   transitionOrder: async (slug: string, status: string) =>
     postOne<Order>(`/orders/${slug}/transition-status/`, { status }),
-  cancelOrder: orderApi.cancel,
-  requestOrderRefund: orderApi.requestRefund,
-
   dashboardSummary: dashboardApi.summary,
 
   /* payments */
@@ -1563,7 +1567,6 @@ export const adminApi = {
   shippingMethods: shippingApi.methods,
   deliveryRates: shippingApi.deliveryRates,
   pickupStations: shippingApi.pickupStations,
-  shipments: shippingApi.shipments,
 
   reviews: catalogApi.reviews,
   ratings: catalogApi.ratings,
@@ -1636,9 +1639,6 @@ export const adminApi = {
   removeAddress: async (id: number) =>
     deleteOne(`/addresses/${id}/`),
 
-  createPayment: async (payload: PaymentPayload) =>
-    postOne<Payment>('/payments/', payload),
-
   createShippingMethod: async (payload: ShippingMethodPayload) =>
     postOne<ShippingMethod>('/shipping-methods/', payload),
   updateShippingMethod: async (id: number, payload: Record<string, unknown>) =>
@@ -1664,25 +1664,30 @@ export const adminApi = {
   removePickupStation: async (id: number) =>
     deleteOne(`/pickup-stations/${id}/`),
 
-  createShipment: async (payload: ShipmentPayload) =>
-    postOne<Shipment>('/shipments/', payload),
-  updateShipment: async (id: number, payload: Record<string, unknown>) =>
-    patchOne<Shipment>(`/shipments/${id}/`, payload),
-  removeShipment: async (id: number) =>
-    deleteOne(`/shipments/${id}/`),
-  markShipmentShipped: async (id: number, payload: { tracking_number?: string }) =>
-    postOne<Shipment>(`/shipments/${id}/mark_shipped/`, payload),
-  markShipmentInTransit: async (id: number) =>
-    postOne<Shipment>(`/shipments/${id}/mark_in_transit/`),
-  markShipmentDelivered: async (id: number) =>
-    postOne<Shipment>(`/shipments/${id}/mark_delivered/`),
-
-  createInventory: async (payload: Record<string, unknown>) =>
-    postOne<Inventory>('/inventory/', payload),
+  createInventory: undefined,
   updateInventory: async (id: number, payload: Record<string, unknown>) =>
-    patchOne<Inventory>(`/inventory/${id}/`, payload),
-  removeInventory: async (id: number) =>
-    deleteOne(`/inventory/${id}/`),
-  adjustInventory: async (id: number, payload: Record<string, unknown>) =>
-    postOne(`/inventory/${id}/adjust/`, payload),
+    toInventoryRecord(
+      await variantApi.update(id, {
+        stock_quantity: Number(payload.stock_quantity ?? 0),
+        max_quantity_per_order:
+          payload.low_stock_threshold == null
+            ? undefined
+            : Number(payload.low_stock_threshold),
+      })
+    ),
+  removeInventory: undefined,
+  adjustInventory: async (id: number, payload: Record<string, unknown>) => {
+    const variant = await variantApi.detail(id);
+    const currentQuantity = Number(variant.stock_quantity ?? 0);
+    const delta = Number(payload.quantity ?? 0);
+    const movementType = String(payload.movement_type ?? '').toUpperCase();
+    const nextQuantity =
+      movementType === 'OUT'
+        ? Math.max(currentQuantity - delta, 0)
+        : currentQuantity + delta;
+
+    return toInventoryRecord(
+      await variantApi.update(id, { stock_quantity: nextQuantity })
+    );
+  },
 };

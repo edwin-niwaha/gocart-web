@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -19,18 +19,20 @@ import { formatCurrency } from '@/lib/utils';
 
 type OrderStatus =
   | 'PENDING'
+  | 'AWAITING_PAYMENT'
   | 'PAID'
   | 'PROCESSING'
   | 'SHIPPED'
   | 'DELIVERED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'REFUNDED';
 
 function normalizeStatus(status?: string): OrderStatus | string {
   return (status || 'PENDING').toUpperCase();
 }
 
 function formatStatus(status?: string) {
-  const normalized = normalizeStatus(status).toLowerCase();
+  const normalized = normalizeStatus(status).toLowerCase().replace(/_/g, ' ');
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
@@ -51,10 +53,20 @@ function getStatusStyles(status?: string) {
         chip: 'bg-amber-100 text-amber-700',
         icon: Clock3,
       };
+    case 'AWAITING_PAYMENT':
+      return {
+        chip: 'bg-blue-100 text-blue-700',
+        icon: Clock3,
+      };
     case 'PAID':
       return {
         chip: 'bg-violet-100 text-violet-700',
         icon: CheckCircle2,
+      };
+    case 'REFUNDED':
+      return {
+        chip: 'bg-slate-100 text-slate-700',
+        icon: XCircle,
       };
     case 'CANCELLED':
       return {
@@ -112,7 +124,7 @@ function getVariantText(item: any) {
     item.color,
   ].filter(Boolean);
 
-  return parts.join(' • ');
+  return parts.join(' / ');
 }
 
 function DetailTile({
@@ -141,26 +153,41 @@ export default function OrderDetailsPage() {
   const orderId = String(params?.id ?? '');
   const router = useRouter();
 
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    orderApi
-      .list()
-      .then(setOrders)
-      .catch(() => setOrders([]))
-      .finally(() => setLoading(false));
-  }, []);
+    let cancelled = false;
 
-  const order = useMemo(
-    () =>
-      orders.find(
-        (item) =>
-          String((item as any).id) === orderId ||
-          String((item as any).slug) === orderId
-      ),
-    [orders, orderId]
-  );
+    async function loadOrder() {
+      try {
+        setLoading(true);
+        const detail = await orderApi.detail(orderId);
+        if (!cancelled) setOrder(detail);
+      } catch {
+        try {
+          const list = await orderApi.list();
+          const fallback =
+            list.find(
+              (item) =>
+                String((item as any).id) === orderId ||
+                String((item as any).slug) === orderId
+            ) ?? null;
+          if (!cancelled) setOrder(fallback);
+        } catch {
+          if (!cancelled) setOrder(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadOrder();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
 
   if (loading) {
     return (

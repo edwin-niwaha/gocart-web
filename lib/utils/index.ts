@@ -7,7 +7,7 @@ export function cn(...inputs: Array<string | undefined | false | null>) {
 
 export function formatCurrency(value: string | number) {
   const num = typeof value === 'string' ? Number(value) : value;
-  return new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', maximumFractionDigits: 0 }).format(num || 0);
+  return `UGX ${Number(num || 0).toLocaleString()}`;
 }
 
 export function getImage(productImage?: string | null, images?: string[]) {

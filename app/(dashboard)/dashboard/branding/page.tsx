@@ -44,7 +44,11 @@ export default function BrandingPage() {
         setBranding({ ...initialBranding, ...brandingData });
         setSettings({ ...initialSettings, ...settingsData });
       } catch (err: any) {
-        setError(err?.response?.data?.detail || err?.message || 'Failed to load branding settings.');
+        setError(
+          err?.response?.data?.detail ||
+            err?.message ||
+            'Failed to load branding settings.'
+        );
       } finally {
         setLoading(false);
       }
@@ -63,36 +67,48 @@ export default function BrandingPage() {
       await adminApi.updateSettings(settings);
       setMessage('Branding and store settings saved successfully.');
     } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || 'Failed to save branding settings.');
+      setError(
+        err?.response?.data?.detail ||
+          err?.message ||
+          'Failed to save branding settings.'
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  const updateBranding = <K extends keyof TenantBranding>(key: K, value: TenantBranding[K]) => {
+  const updateBranding = <K extends keyof TenantBranding>(
+    key: K,
+    value: TenantBranding[K]
+  ) => {
     setBranding((current) => ({ ...current, [key]: value }));
   };
 
-  const updateSettings = <K extends keyof TenantSettings>(key: K, value: TenantSettings[K]) => {
+  const updateSettings = <K extends keyof TenantSettings>(
+    key: K,
+    value: TenantSettings[K]
+  ) => {
     setSettings((current) => ({ ...current, [key]: value }));
   };
 
   return (
-    <div className="min-h-screen space-y-8 py-6">
-      <section className="relative overflow-hidden rounded-[2rem] border border-orange-100 bg-gradient-to-br from-[#127D61] via-[#0f766e] to-[#073b32] p-6 text-white shadow-xl shadow-emerald-900/10 md:p-8">
-        <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-24 left-16 h-64 w-64 rounded-full bg-[#F79420]/30 blur-3xl" />
+    <div className="space-y-5 py-4">
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#127D61] via-[#0f766e] to-[#073b32] p-5 text-white shadow-md md:p-6">
+        <div className="absolute -right-20 -top-20 h-52 w-52 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute -bottom-20 left-10 h-52 w-52 rounded-full bg-[#F79420]/25 blur-3xl" />
 
-        <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="inline-flex rounded-full bg-white/15 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.2em] text-emerald-50">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-100">
               White-label branding
             </p>
-            <h1 className="mt-4 text-3xl font-black tracking-tight md:text-5xl">
+
+            <h1 className="mt-2 text-2xl font-black tracking-tight md:text-4xl">
               Branding and store settings
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-emerald-50/90 md:text-base">
-              Customize your tenant identity, storefront links, colors, and customer-facing experience.
+
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/90">
+              Customize storefront identity, links, colors, and customer-facing settings.
             </p>
           </div>
 
@@ -100,7 +116,7 @@ export default function BrandingPage() {
             type="button"
             onClick={save}
             disabled={saving || loading}
-            className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-[#127D61] shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-[#127D61] shadow-md transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? 'Saving…' : 'Save changes'}
           </button>
@@ -108,36 +124,39 @@ export default function BrandingPage() {
       </section>
 
       {message ? (
-        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">
           {message}
         </div>
       ) : null}
 
       {error ? (
-        <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
           {error}
         </div>
       ) : null}
 
       {loading ? (
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
           Loading branding settings…
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          <div className="mb-6">
-            <h2 className="text-xl font-black text-slate-900">Brand identity</h2>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+          <div className="mb-4">
+            <h2 className="text-lg font-black text-slate-900">
+              Brand identity
+            </h2>
+
             <p className="mt-1 text-sm text-slate-500">
-              These details appear on the tenant storefront and mobile experience.
+              These details appear on the tenant storefront.
             </p>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <Field label="App name">
               <input
-                className="input"
+                className="input h-11 rounded-xl text-sm"
                 placeholder="GoCart"
                 value={branding.app_name || ''}
                 onChange={(e) => updateBranding('app_name', e.target.value)}
@@ -146,7 +165,7 @@ export default function BrandingPage() {
 
             <Field label="Logo URL">
               <input
-                className="input"
+                className="input h-11 rounded-xl text-sm"
                 placeholder="https://example.com/logo.png"
                 value={branding.logo || ''}
                 onChange={(e) => updateBranding('logo', e.target.value)}
@@ -155,7 +174,7 @@ export default function BrandingPage() {
 
             <Field label="Hero title">
               <input
-                className="input"
+                className="input h-11 rounded-xl text-sm"
                 placeholder="Modern ordering for your customers"
                 value={branding.hero_title || ''}
                 onChange={(e) => updateBranding('hero_title', e.target.value)}
@@ -164,7 +183,7 @@ export default function BrandingPage() {
 
             <Field label="Hero subtitle">
               <input
-                className="input"
+                className="input h-11 rounded-xl text-sm"
                 placeholder="Customize your storefront and launch your tenant brand."
                 value={branding.hero_subtitle || ''}
                 onChange={(e) => updateBranding('hero_subtitle', e.target.value)}
@@ -190,16 +209,19 @@ export default function BrandingPage() {
             />
           </div>
 
-          <div className="mt-8 border-t border-slate-100 pt-6">
-            <h2 className="text-xl font-black text-slate-900">Store settings</h2>
+          <div className="mt-6 border-t border-slate-100 pt-5">
+            <h2 className="text-lg font-black text-slate-900">
+              Store settings
+            </h2>
+
             <p className="mt-1 text-sm text-slate-500">
-              Manage public links, support routes, and availability.
+              Manage public links and availability.
             </p>
 
-            <div className="mt-5 grid gap-5 md:grid-cols-2">
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label="Website URL">
                 <input
-                  className="input"
+                  className="input h-11 rounded-xl text-sm"
                   placeholder="https://yourstore.com"
                   value={settings.website_url || ''}
                   onChange={(e) => updateSettings('website_url', e.target.value)}
@@ -208,16 +230,18 @@ export default function BrandingPage() {
 
               <Field label="Support chat URL">
                 <input
-                  className="input"
+                  className="input h-11 rounded-xl text-sm"
                   placeholder="https://wa.me/..."
                   value={settings.support_chat_url || ''}
-                  onChange={(e) => updateSettings('support_chat_url', e.target.value)}
+                  onChange={(e) =>
+                    updateSettings('support_chat_url', e.target.value)
+                  }
                 />
               </Field>
 
               <Field label="Terms URL">
                 <input
-                  className="input"
+                  className="input h-11 rounded-xl text-sm"
                   placeholder="https://yourstore.com/terms"
                   value={settings.terms_url || ''}
                   onChange={(e) => updateSettings('terms_url', e.target.value)}
@@ -226,89 +250,103 @@ export default function BrandingPage() {
 
               <Field label="Privacy URL">
                 <input
-                  className="input"
+                  className="input h-11 rounded-xl text-sm"
                   placeholder="https://yourstore.com/privacy"
                   value={settings.privacy_url || ''}
                   onChange={(e) => updateSettings('privacy_url', e.target.value)}
                 />
               </Field>
 
-              <label className="md:col-span-2 flex cursor-pointer items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4 transition hover:border-emerald-200 hover:bg-emerald-50">
+              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-emerald-200 hover:bg-emerald-50 md:col-span-2">
                 <div>
-                  <p className="text-sm font-black text-slate-900">Maintenance mode</p>
+                  <p className="text-sm font-black text-slate-900">
+                    Maintenance mode
+                  </p>
+
                   <p className="mt-1 text-xs text-slate-500">
-                    Temporarily pause storefront access while you update the tenant experience.
+                    Pause storefront access while updating the tenant experience.
                   </p>
                 </div>
 
                 <input
                   type="checkbox"
                   checked={Boolean(settings.maintenance_mode)}
-                  onChange={(e) => updateSettings('maintenance_mode', e.target.checked)}
+                  onChange={(e) =>
+                    updateSettings('maintenance_mode', e.target.checked)
+                  }
                   className="h-5 w-5 rounded border-slate-300 text-[#127D61] focus:ring-[#127D61]"
                 />
               </label>
             </div>
           </div>
 
-          <div className="mt-8 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-500">
-              Review the live preview before saving your changes.
+              Review the preview before saving.
             </p>
 
             <button
               type="button"
               onClick={save}
               disabled={saving || loading}
-              className="rounded-2xl bg-[#127D61] px-6 py-3 text-sm font-black text-white shadow-lg shadow-emerald-900/10 transition hover:-translate-y-0.5 hover:bg-[#0f6f57] disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl bg-[#127D61] px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-[#0f6f57] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? 'Saving…' : 'Save branding'}
             </button>
           </div>
         </section>
 
-        <aside className="h-fit rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div
-            className="overflow-hidden rounded-[1.75rem] text-white shadow-lg"
+            className="overflow-hidden rounded-2xl text-white shadow-md"
             style={{
-              background: `linear-gradient(135deg, ${branding.primary_color || '#127D61'}, ${
-                branding.accent_color || '#0f766e'
-              })`,
+              background: `linear-gradient(135deg, ${
+                branding.primary_color || '#127D61'
+              }, ${branding.accent_color || '#0f766e'})`,
             }}
           >
-            <div className="relative p-6">
-              <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-white/15 blur-2xl" />
-              <div className="absolute -bottom-12 left-8 h-36 w-36 rounded-full bg-white/10 blur-2xl" />
+            <div className="relative p-5">
+              <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/15 blur-2xl" />
+              <div className="absolute -bottom-10 left-8 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
 
               <div className="relative z-10">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-white/20 text-lg font-black">
+                  <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-white/20 text-base font-black">
                     {branding.logo ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={branding.logo} alt="Brand logo" className="h-full w-full object-cover" />
+                      <img
+                        src={branding.logo}
+                        alt="Brand logo"
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
                       (branding.app_name || 'G').slice(0, 1).toUpperCase()
                     )}
                   </div>
 
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-80">Preview</p>
-                    <h2 className="text-xl font-black">{branding.app_name || 'GoCart'}</h2>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] opacity-80">
+                      Preview
+                    </p>
+
+                    <h2 className="text-lg font-black">
+                      {branding.app_name || 'GoCart'}
+                    </h2>
                   </div>
                 </div>
 
-                <h3 className="mt-8 text-3xl font-black leading-tight">
-                  {branding.hero_title || 'Modern ordering for your customers'}
+                <h3 className="mt-6 text-2xl font-black leading-tight">
+                  {branding.hero_title ||
+                    'Modern ordering for your customers'}
                 </h3>
 
-                <p className="mt-3 text-sm leading-6 opacity-90">
+                <p className="mt-2 text-sm leading-6 opacity-90">
                   {branding.hero_subtitle ||
                     'Customize your storefront, manage staff, and launch your tenant brand.'}
                 </p>
 
                 <button
                   type="button"
-                  className="mt-6 rounded-2xl bg-white px-5 py-3 text-sm font-black shadow-lg"
+                  className="mt-5 rounded-xl bg-white px-4 py-2.5 text-sm font-bold shadow-md"
                   style={{ color: branding.primary_color || '#127D61' }}
                 >
                   Start ordering
@@ -317,11 +355,17 @@ export default function BrandingPage() {
             </div>
           </div>
 
-          <div className="mt-5 space-y-3 rounded-3xl bg-slate-50 p-4">
+          <div className="mt-4 space-y-2 rounded-2xl bg-slate-50 p-3">
             <PreviewRow label="Website" value={settings.website_url || 'Not set'} />
-            <PreviewRow label="Support" value={settings.support_chat_url || 'Not set'} />
+            <PreviewRow
+              label="Support"
+              value={settings.support_chat_url || 'Not set'}
+            />
             <PreviewRow label="Terms" value={settings.terms_url || 'Not set'} />
-            <PreviewRow label="Privacy" value={settings.privacy_url || 'Not set'} />
+            <PreviewRow
+              label="Privacy"
+              value={settings.privacy_url || 'Not set'}
+            />
             <PreviewRow
               label="Maintenance"
               value={settings.maintenance_mode ? 'Enabled' : 'Disabled'}
@@ -334,10 +378,19 @@ export default function BrandingPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
-    <label className="space-y-2">
-      <span className="text-sm font-black text-slate-700">{label}</span>
+    <label className="space-y-1.5">
+      <span className="text-xs font-black uppercase tracking-wide text-slate-600">
+        {label}
+      </span>
+
       {children}
     </label>
   );
@@ -354,13 +407,14 @@ function ColorField({
 }) {
   return (
     <Field label={label}>
-      <div className="flex overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm focus-within:ring-4 focus-within:ring-emerald-100">
+      <div className="flex h-11 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm focus-within:ring-4 focus-within:ring-emerald-100">
         <input
           type="color"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="h-12 w-14 cursor-pointer border-0 bg-transparent p-1"
+          className="h-11 w-12 cursor-pointer border-0 bg-transparent p-1"
         />
+
         <input
           className="flex-1 border-0 px-3 text-sm font-semibold text-slate-700 outline-none"
           value={value}
@@ -381,11 +435,14 @@ function PreviewRow({
   highlight?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 text-sm">
+    <div className="flex items-center justify-between gap-3 text-sm">
       <span className="font-semibold text-slate-500">{label}</span>
+
       <span
-        className={`max-w-[190px] truncate rounded-full px-3 py-1 text-right text-xs font-black ${
-          highlight ? 'bg-orange-100 text-orange-700' : 'bg-white text-slate-700'
+        className={`max-w-[160px] truncate rounded-full px-2.5 py-1 text-right text-[11px] font-black ${
+          highlight
+            ? 'bg-orange-100 text-orange-700'
+            : 'bg-white text-slate-700'
         }`}
       >
         {value}

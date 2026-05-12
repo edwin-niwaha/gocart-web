@@ -1,9 +1,10 @@
 ﻿'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useCallback, useState } from 'react';
+import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
+  ChevronDown,
   Headphones,
   LayoutDashboard,
   LogIn,
@@ -12,6 +13,8 @@ import {
   Package,
   Receipt,
   Search,
+  Settings,
+  ShieldCheck,
   ShoppingCart,
   Store,
   User,
@@ -38,7 +41,7 @@ function CountBadge({ count }: { count: number }) {
   if (count <= 0) return null;
 
   return (
-    <span className="absolute -right-2 -top-2 min-w-[20px] rounded-full bg-amber-400 px-1.5 text-center text-[11px] font-extrabold text-black">
+    <span className="absolute -right-1.5 -top-1.5 min-w-[18px] rounded-full bg-[#F79420] px-1 py-0.5 text-center text-[10px] font-black leading-none text-white shadow">
       {count > 99 ? '99+' : count}
     </span>
   );
@@ -49,84 +52,104 @@ function IconAction({
   icon: Icon,
   label,
   count,
-  onClick,
 }: {
-  href?: string;
+  href: string;
   icon: LucideIcon;
   label: string;
   count?: number;
-  onClick?: () => void;
-}) {
-  const content = (
-    <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/15">
-      <Icon size={19} />
-      {typeof count === 'number' ? <CountBadge count={count} /> : null}
-      <span className="sr-only">{label}</span>
-    </div>
-  );
-
-  if (href) {
-    return <Link href={href}>{content}</Link>;
-  }
-
-  return (
-    <button type="button" onClick={onClick} aria-label={label}>
-      {content}
-    </button>
-  );
-}
-
-function DesktopNavLink({
-  href,
-  label,
-  icon: Icon,
-  active,
-}: {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  active: boolean;
 }) {
   return (
     <Link
       href={href}
-      className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-        active
-          ? 'bg-white text-slate-900'
-          : 'text-white/85 hover:bg-white/10 hover:text-white'
-      }`}
+      aria-label={label}
+      className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-white transition hover:bg-white/20"
     >
-      <Icon size={16} />
-      <span>{label}</span>
+      <Icon size={17} />
+      {typeof count === 'number' ? <CountBadge count={count} /> : null}
     </Link>
   );
 }
 
-function MobileNavLink({
+function Avatar({
+  avatarUrl,
+  userInitial,
+  userName,
+  compact = false,
+}: {
+  avatarUrl?: string | null;
+  userInitial: string;
+  userName: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-white text-slate-950 ring-1 ring-white/20 ${
+        compact ? 'h-8 w-8' : 'h-10 w-10'
+      }`}
+    >
+      {avatarUrl ? (
+        <img src={avatarUrl} alt={userName} className="h-full w-full object-cover" />
+      ) : (
+        <span className={compact ? 'text-xs font-black' : 'text-sm font-black'}>
+          {userInitial}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function NavLink({
   href,
   label,
   icon: Icon,
   active,
+  mobile = false,
   onNavigate,
 }: {
   href: string;
   label: string;
   icon: LucideIcon;
   active: boolean;
-  onNavigate: () => void;
+  mobile?: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <Link
       href={href}
       onClick={onNavigate}
-      className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+      className={`flex items-center gap-2 rounded-xl font-bold transition ${
+        mobile ? 'px-3 py-2.5 text-sm' : 'px-3 py-2 text-xs'
+      } ${
         active
-          ? 'bg-white text-slate-900'
-          : 'text-white/90 hover:bg-white/10 hover:text-white'
+          ? 'bg-white text-slate-950 shadow-sm'
+          : 'text-white/80 hover:bg-white/10 hover:text-white'
       }`}
     >
-      <Icon size={18} />
-      <span>{label}</span>
+      <Icon size={mobile ? 18 : 15} />
+      {label}
+    </Link>
+  );
+}
+
+function MenuLink({
+  href,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
+    >
+      <Icon size={17} />
+      {label}
     </Link>
   );
 }
@@ -155,44 +178,47 @@ export function Header() {
 
   const { user, hydrated, logout, canAccessDashboard, currentRole } =
     useAuthStore();
+
   const tenant = useTenant();
   const palette = getBrandPalette(tenant?.branding);
 
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [cartCount, setCartCount] = useState(0);
   const [ordersCount, setOrdersCount] = useState(0);
-  const [loadingCounts, setLoadingCounts] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   const appName = tenant?.branding?.app_name || 'GoCart';
-  const slogan = 'Shop - Sell - Deliver';
-  const dashboardAllowed = canAccessDashboard();
+  const slogan = tenant?.branding?.tagline || 'Shop • Sell • Deliver';
+
   const isAuthenticated = Boolean(user);
+  const dashboardAllowed = canAccessDashboard();
   const canShop = canUseStorefrontShopping(user);
+
   const activeMembership = getActiveMembership(user);
-  const signedInRoleLabel = formatRoleLabel(currentRole() || user?.user_type);
-  const signedInTenantLabel = formatTenantLabel(
-    activeMembership?.tenant_name || activeMembership?.tenant_slug
+  const roleLabel = formatRoleLabel(currentRole() || user?.user_type);
+  const tenantLabel = formatTenantLabel(
+    activeMembership?.tenant_name ||
+      activeMembership?.tenant_slug ||
+      tenant?.settings?.store_name
   );
+
+  const userName =
+    [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim() ||
+    user?.username ||
+    user?.email?.split('@')[0] ||
+    'User';
+
+  const userInitial = userName.charAt(0).toUpperCase();
+  const avatarUrl = user?.avatar_url || user?.profile_picture_url;
 
   const navLinks = useMemo<NavLinkItem[]>(
     () => [
       { href: '/', label: 'Home', icon: Store },
       { href: '/products', label: 'Shop', icon: Package },
       { href: '/cart', label: 'Cart', icon: ShoppingCart, shopperOnly: true },
-      {
-        href: '/support',
-        label: 'Support',
-        icon: Headphones,
-        shopperOnly: true,
-      },
-      {
-        href: '/account',
-        label: 'Account',
-        icon: User,
-        authOnly: true,
-        shopperOnly: true,
-      },
+      { href: '/support', label: 'Support', icon: Headphones, shopperOnly: true },
     ],
     []
   );
@@ -209,27 +235,29 @@ export function Header() {
         if (link.shopperOnly && !canShop) return false;
         return true;
       }),
-    [canShop, navLinks, isAuthenticated]
+    [navLinks, isAuthenticated, canShop]
+  );
+
+  const desktopNavLinks = useMemo(
+    () =>
+      visibleNavLinks.filter((link) =>
+        ['/', '/products', '/support'].includes(link.href)
+      ),
+    [visibleNavLinks]
   );
 
   const loadCounts = useCallback(async () => {
-    if (!hydrated) return;
-
-    if (!canShop) {
+    if (!hydrated || !canShop) {
       setCartCount(0);
       setOrdersCount(0);
       return;
     }
 
     try {
-      setLoadingCounts(true);
-
       const items = await cartApi.listItems();
-      const nextCartCount = items.reduce(
-        (sum, item) => sum + Number(item.quantity || 0),
-        0
+      setCartCount(
+        items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
       );
-      setCartCount(nextCartCount);
 
       if (!user) {
         setOrdersCount(0);
@@ -237,55 +265,62 @@ export function Header() {
       }
 
       const orders = await orderApi.list();
-      setOrdersCount(orders.length);
+      setOrdersCount(Array.isArray(orders) ? orders.length : 0);
     } catch {
       setCartCount(0);
       setOrdersCount(0);
-    } finally {
-      setLoadingCounts(false);
     }
-  }, [canShop, hydrated, user]);
+  }, [hydrated, canShop, user]);
 
   useEffect(() => {
     setMobileOpen(false);
+    setAccountOpen(false);
   }, [pathname]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    loadCounts();
-  }, [hydrated, loadCounts, pathname]);
+    if (!accountOpen) return;
 
-  useEffect(() => {
-    const handleCartUpdated = () => {
-      loadCounts();
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener(CART_UPDATED_EVENT, handleCartUpdated);
+    function handlePointerDown(event: MouseEvent) {
+      if (
+        accountMenuRef.current &&
+        !accountMenuRef.current.contains(event.target as Node)
+      ) {
+        setAccountOpen(false);
+      }
     }
 
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setAccountOpen(false);
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
     return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener(CART_UPDATED_EVENT, handleCartUpdated);
-      }
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
     };
+  }, [accountOpen]);
+
+  useEffect(() => {
+    void loadCounts();
+  }, [loadCounts, pathname]);
+
+  useEffect(() => {
+    window.addEventListener(CART_UPDATED_EVENT, loadCounts);
+    return () => window.removeEventListener(CART_UPDATED_EVENT, loadCounts);
   }, [loadCounts]);
 
   function handleSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     const term = search.trim();
-
-    if (!term) {
-      router.push('/products');
-      return;
-    }
-
-    router.push(`/products?search=${encodeURIComponent(term)}`);
+    router.push(term ? `/products?search=${encodeURIComponent(term)}` : '/products');
     setMobileOpen(false);
   }
 
   async function handleLogout() {
+    setAccountOpen(false);
     await logout();
     setMobileOpen(false);
     setCartCount(0);
@@ -293,120 +328,36 @@ export function Header() {
     router.push('/');
   }
 
+  const closeMenus = useCallback(() => {
+    setAccountOpen(false);
+    setMobileOpen(false);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-slate-950 text-white shadow-sm">
-      <div className="mx-auto max-w-7xl px-4">
-        <div className="flex min-h-[76px] items-center gap-3 py-3">
-          <Link href="/" className="flex min-w-0 items-center gap-3">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/95 text-white shadow-lg shadow-slate-950/10 backdrop-blur">
+      <div className="mx-auto max-w-7xl px-3 sm:px-4 lg:px-6">
+        <div className="flex min-h-[64px] items-center gap-3 py-2">
+          <Link href="/" className="flex min-w-0 shrink-0 items-center gap-2.5">
             <div
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-base font-black text-white shadow-sm"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base font-black text-white shadow"
               style={{ backgroundColor: palette.primary }}
             >
-              G
+              {appName.charAt(0).toUpperCase()}
             </div>
 
             <div className="min-w-0">
-              <p className="truncate text-lg font-extrabold tracking-tight">
+              <p className="max-w-[116px] truncate text-base font-black tracking-tight sm:max-w-[150px] lg:max-w-[180px]">
                 {appName}
               </p>
-              <p className="truncate text-xs text-white/65">{slogan}</p>
+              <p className="hidden max-w-[180px] truncate text-[11px] font-semibold leading-3 text-white/55 sm:block">
+                {slogan}
+              </p>
             </div>
           </Link>
 
-          <form
-            onSubmit={handleSearchSubmit}
-            className="hidden flex-1 items-center overflow-hidden rounded-xl border border-slate-200 bg-white md:flex"
-          >
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products"
-              className="h-11 flex-1 border-0 bg-transparent px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-            />
-            <button
-              type="submit"
-              className="flex h-11 w-12 items-center justify-center bg-amber-300 text-slate-900 transition hover:bg-amber-400"
-              aria-label="Search"
-            >
-              <Search size={18} />
-            </button>
-          </form>
-
-          <div className="ml-auto flex items-center gap-2">
-            {canShop ? (
-              <IconAction
-                href="/cart"
-                icon={ShoppingCart}
-                label={loadingCounts ? 'Loading cart' : 'Cart'}
-                count={cartCount}
-              />
-            ) : null}
-
-            {isAuthenticated && canShop ? (
-              <IconAction
-                href="/account/orders"
-                icon={Receipt}
-                label={loadingCounts ? 'Loading orders' : 'Orders'}
-                count={ordersCount}
-              />
-            ) : null}
-
-            {hydrated ? (
-              isAuthenticated ? (
-                <>
-                  {canShop ? (
-                    <Link
-                      href="/account"
-                      className="hidden rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 lg:inline-flex"
-                    >
-                      My Account
-                    </Link>
-                  ) : dashboardAllowed ? (
-                    <Link
-                      href="/dashboard"
-                      className="hidden rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 lg:inline-flex"
-                    >
-                      Dashboard
-                    </Link>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="hidden items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 lg:inline-flex"
-                  >
-                    <LogOut size={16} />
-                    Sign out
-                  </button>
-                </>
-              ) : (
-                <Link
-                  href="/auth/login"
-                  className="hidden items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition lg:inline-flex"
-                  style={{ backgroundColor: palette.primary }}
-                >
-                  <LogIn size={16} />
-                  Sign in
-                </Link>
-              )
-            ) : null}
-
-            <button
-              type="button"
-              onClick={() => setMobileOpen((prev) => !prev)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 transition hover:bg-white/15 lg:hidden"
-              aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-            >
-              {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
-          </div>
-        </div>
-
-        <div className="hidden items-center justify-between gap-3 border-t border-white/10 py-3 lg:flex">
-          <nav className="flex items-center gap-2">
-            {visibleNavLinks.map((link) => (
-              <DesktopNavLink
+          <nav className="ml-2 hidden shrink-0 items-center gap-1 xl:flex">
+            {desktopNavLinks.map((link) => (
+              <NavLink
                 key={link.href}
                 href={link.href}
                 label={link.label}
@@ -416,7 +367,7 @@ export function Header() {
             ))}
 
             {dashboardAllowed ? (
-              <DesktopNavLink
+              <NavLink
                 href="/dashboard"
                 label="Dashboard"
                 icon={LayoutDashboard}
@@ -425,117 +376,292 @@ export function Header() {
             ) : null}
           </nav>
 
-          {hydrated ? (
-            isAuthenticated ? (
-              <div className="text-sm text-white/70">
-                Signed in as{' '}
-                <span className="font-semibold text-white">
-                  {user?.first_name || user?.username || 'User'}
-                </span>
-                {signedInRoleLabel ? (
-                  <span className="text-white/55"> ({signedInRoleLabel})</span>
-                ) : null}
-                {signedInTenantLabel ? (
-                  <span className="text-white/55"> for {signedInTenantLabel}</span>
+          <form
+            onSubmit={handleSearchSubmit}
+            className="ml-auto hidden h-10 w-52 shrink-0 items-center overflow-hidden rounded-xl border border-white/10 bg-white shadow-sm md:flex lg:w-64 2xl:w-80"
+          >
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search products..."
+              className="h-10 min-w-0 flex-1 bg-transparent px-3 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+            />
+
+            <button
+              type="submit"
+              className="flex h-10 w-11 shrink-0 items-center justify-center text-white transition hover:opacity-90"
+              style={{ backgroundColor: palette.primary }}
+              aria-label="Search"
+            >
+              <Search size={16} />
+            </button>
+          </form>
+
+          <div className="flex min-w-0 items-center gap-1.5">
+            {canShop ? (
+              <IconAction
+                href="/cart"
+                icon={ShoppingCart}
+                label="Cart"
+                count={cartCount}
+              />
+            ) : null}
+
+            {isAuthenticated && canShop ? (
+              <IconAction
+                href="/account/orders"
+                icon={Receipt}
+                label="Orders"
+                count={ordersCount}
+              />
+            ) : null}
+
+            {hydrated ? (
+              <div ref={accountMenuRef} className="relative hidden lg:block">
+                <button
+                  type="button"
+                  onClick={() => setAccountOpen((prev) => !prev)}
+                  className="flex h-10 min-w-0 items-center gap-2 rounded-xl border border-white/10 bg-white/10 px-2.5 text-sm font-bold text-white transition hover:bg-white/20"
+                  aria-expanded={accountOpen}
+                  aria-haspopup="menu"
+                >
+                  {isAuthenticated ? (
+                    <>
+                      <Avatar
+                        avatarUrl={avatarUrl}
+                        userInitial={userInitial}
+                        userName={userName}
+                        compact
+                      />
+                      <span className="hidden max-w-[118px] truncate xl:block">
+                        {userName}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-slate-950">
+                        <User size={16} />
+                      </span>
+                      <span className="hidden xl:block">Account</span>
+                    </>
+                  )}
+                  <ChevronDown
+                    size={16}
+                    className={`shrink-0 transition ${accountOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+
+                {accountOpen ? (
+                  <div
+                    className="absolute right-0 mt-2 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl shadow-slate-950/20"
+                    role="menu"
+                  >
+                    {isAuthenticated ? (
+                      <div className="border-b border-slate-100 p-4">
+                        <div className="flex items-center gap-3">
+                          <Avatar
+                            avatarUrl={avatarUrl}
+                            userInitial={userInitial}
+                            userName={userName}
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black">{userName}</p>
+                            <p className="truncate text-xs font-semibold text-slate-500">
+                              {roleLabel || 'Customer'}
+                            </p>
+                            {tenantLabel ? (
+                              <p className="truncate text-xs font-semibold text-slate-400">
+                                {tenantLabel}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="border-b border-slate-100 p-4">
+                        <p className="text-sm font-black">Welcome to {appName}</p>
+                        <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                          Sign in to manage your profile and orders.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="p-2">
+                      {isAuthenticated ? (
+                        <>
+                          <MenuLink
+                            href={canShop ? '/account/profile' : '/dashboard'}
+                            icon={Settings}
+                            label="Profile / Account"
+                            onClick={closeMenus}
+                          />
+
+                          {dashboardAllowed ? (
+                            <MenuLink
+                              href="/dashboard"
+                              icon={ShieldCheck}
+                              label="Dashboard"
+                              onClick={closeMenus}
+                            />
+                          ) : null}
+
+                          {canShop ? (
+                            <MenuLink
+                              href="/account/orders"
+                              icon={Receipt}
+                              label="Orders"
+                              onClick={closeMenus}
+                            />
+                          ) : null}
+
+                          <button
+                            type="button"
+                            onClick={handleLogout}
+                            className="mt-1 flex w-full items-center gap-3 rounded-lg border-t border-slate-100 px-3 py-2.5 text-left text-sm font-bold text-red-600 transition hover:bg-red-50"
+                          >
+                            <LogOut size={17} />
+                            Sign out
+                          </button>
+                        </>
+                      ) : (
+                        <Link
+                          href="/auth/login"
+                          onClick={closeMenus}
+                          className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-black text-white transition hover:opacity-90"
+                          style={{ backgroundColor: palette.primary }}
+                        >
+                          <LogIn size={17} />
+                          Sign in
+                        </Link>
+                      )}
+                    </div>
+                  </div>
                 ) : null}
               </div>
-            ) : (
-              <div className="text-sm text-white/70">
-                You are browsing as a guest
-              </div>
-            )
-          ) : null}
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => setMobileOpen((prev) => !prev)}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 transition hover:bg-white/20 xl:hidden"
+              aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            >
+              {mobileOpen ? <X size={19} /> : <Menu size={19} />}
+            </button>
+          </div>
         </div>
 
         {mobileOpen ? (
-          <div className="border-t border-white/10 py-4 lg:hidden">
+          <div className="border-t border-white/10 py-3 xl:hidden">
             <form
               onSubmit={handleSearchSubmit}
-              className="mb-4 flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white"
+              className="mb-3 flex h-10 items-center overflow-hidden rounded-xl bg-white md:hidden"
             >
               <input
-                type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search products"
-                className="h-11 flex-1 border-0 bg-transparent px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                placeholder="Search products..."
+                className="h-10 min-w-0 flex-1 bg-transparent px-3 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
               />
+
               <button
                 type="submit"
-                className="flex h-11 w-12 items-center justify-center bg-amber-300 text-slate-900"
-                aria-label="Search"
+                className="flex h-10 w-11 shrink-0 items-center justify-center text-white"
+                style={{ backgroundColor: palette.primary }}
               >
-                <Search size={18} />
+                <Search size={16} />
               </button>
             </form>
 
-            <nav className="flex flex-col gap-2">
+            {isAuthenticated ? (
+              <div className="mb-3 rounded-xl border border-white/10 bg-white/10 p-3">
+                <div className="flex items-center gap-3">
+                  <Avatar
+                    avatarUrl={avatarUrl}
+                    userInitial={userInitial}
+                    userName={userName}
+                  />
+
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-white">
+                      {userName}
+                    </p>
+                    <p className="truncate text-xs font-semibold text-white/55">
+                      {[roleLabel, tenantLabel].filter(Boolean).join(' • ') ||
+                        user?.email}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <nav className="grid gap-1.5 sm:grid-cols-2">
               {visibleNavLinks.map((link) => (
-                <MobileNavLink
+                <NavLink
                   key={link.href}
                   href={link.href}
                   label={link.label}
                   icon={link.icon}
                   active={isActive(link.href)}
+                  mobile
                   onNavigate={() => setMobileOpen(false)}
                 />
               ))}
 
               {dashboardAllowed ? (
-                <MobileNavLink
+                <NavLink
                   href="/dashboard"
                   label="Dashboard"
                   icon={LayoutDashboard}
                   active={isActive('/dashboard')}
+                  mobile
                   onNavigate={() => setMobileOpen(false)}
                 />
               ) : null}
 
-              <div className="mt-2 border-t border-white/10 pt-3">
-                {hydrated ? (
-                  isAuthenticated ? (
-                    <div className="flex flex-col gap-2">
-                      {canShop ? (
-                        <Link
-                          href="/account"
-                          onClick={() => setMobileOpen(false)}
-                          className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-                        >
-                          <User size={18} />
-                          My Account
-                        </Link>
-                      ) : dashboardAllowed ? (
-                        <Link
-                          href="/dashboard"
-                          onClick={() => setMobileOpen(false)}
-                          className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-                        >
-                          <LayoutDashboard size={18} />
-                          Dashboard
-                        </Link>
-                      ) : null}
+              <div className="border-t border-white/10 pt-3 sm:col-span-2">
+                {hydrated && isAuthenticated ? (
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    <NavLink
+                      href={canShop ? '/account/profile' : '/dashboard'}
+                      label="Profile / Account"
+                      icon={Settings}
+                      active={canShop ? isActive('/account/profile') : isActive('/dashboard')}
+                      mobile
+                      onNavigate={closeMenus}
+                    />
 
-                      <button
-                        type="button"
-                        onClick={handleLogout}
-                        className="flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold text-white hover:bg-white/10"
-                      >
-                        <LogOut size={18} />
-                        Sign out
-                      </button>
-                    </div>
-                  ) : (
-                    <Link
-                      href="/auth/login"
-                      onClick={() => setMobileOpen(false)}
-                      className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white"
-                      style={{ backgroundColor: palette.primary }}
+                    {canShop ? (
+                      <NavLink
+                        href="/account/orders"
+                        label="Orders"
+                        icon={Receipt}
+                        active={isActive('/account/orders')}
+                        mobile
+                        onNavigate={closeMenus}
+                      />
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold text-white hover:bg-white/10 sm:col-span-2"
                     >
-                      <LogIn size={16} />
-                      Sign in
-                    </Link>
-                  )
-                ) : null}
+                      <LogOut size={18} />
+                      Sign out
+                    </button>
+                  </div>
+                ) : (
+                  <Link
+                    href="/auth/login"
+                    onClick={closeMenus}
+                    className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold text-white"
+                    style={{ backgroundColor: palette.primary }}
+                  >
+                    <LogIn size={16} />
+                    Sign in
+                  </Link>
+                )}
               </div>
             </nav>
           </div>
